@@ -1,1 +1,7 @@
-# act_tracker
+# Personal Activity Tracker
+
+## Description
+
+## Instructions
+
+## Specifications
