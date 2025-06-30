@@ -139,5 +139,3 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 def get_all_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     users = db.query(models.User).offset(skip).limit(limit).all()
     return users
-
-# testing for git
