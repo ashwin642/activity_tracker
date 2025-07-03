@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine
 import models, schemas
@@ -8,6 +9,15 @@ from typing import Optional
 models.Base.metadata.create_all(bind=engine)
  
 app = FastAPI()
+
+# Add CORS middleware to allow React frontend to connect
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev server ports
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
  
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
  
@@ -24,9 +34,23 @@ def get_password_hash(password):
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
+
+@app.post("/login", response_model=schemas.UserOut)
+def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
+    # Find user by username in the users.db SQLite database
+    db_user = db.query(models.User).filter(models.User.username == user.username).first()
+    if not db_user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    # Verify password against hashed password stored in database
+    if not verify_password(user.password, db_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    return db_user
  
 @app.post("/register", response_model=schemas.UserOut)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    # Check if username or email already exists in users.db
     db_user = db.query(models.User).filter(
         (models.User.username == user.username) | (models.User.email == user.email)
     ).first()
@@ -39,6 +63,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         email=user.email,
         hashed_password=hashed_password
     )
+    # Save to users.db SQLite database
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -53,7 +78,7 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 @app.put("/users/{user_id}", response_model=schemas.UserOut)
 def update_user(user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
-    # Get the existing user
+    # Get the existing user from users.db
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -89,7 +114,7 @@ def update_user(user_id: int, user_update: schemas.UserUpdate, db: Session = Dep
 
 @app.patch("/users/{user_id}", response_model=schemas.UserOut)
 def partial_update_user(user_id: int, user_update: schemas.UserPartialUpdate, db: Session = Depends(get_db)):
-    # Get the existing user
+    # Get the existing user from users.db
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
