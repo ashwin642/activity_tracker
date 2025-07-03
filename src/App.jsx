@@ -1,11 +1,13 @@
-import React from 'react'
+import React from 'react';
+import LoginRegister from './components/LoginRegister';
+import './App.css';
 
 function App() {
-    return (
-        <div>
-            <h1>Personal Activity Tracker</h1>
-        </div>
-    )
+  return (
+    <div className="App">
+      <LoginRegister />
+    </div>
+  );
 }
 
-export default App
+export default App;
