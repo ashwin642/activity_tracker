@@ -6,7 +6,11 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
-# Add these two schemas for update functionality
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+# Update schemas for user modification
 class UserUpdate(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
