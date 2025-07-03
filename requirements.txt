@@ -1,7 +1,12 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
-pydantic
+pydantic[email]
 passlib[bcrypt]
+python-multipart
 
-uvicorn main:app --reload
+# To run the backend:
+# uvicorn main:app --reload
+
+# To run the front end:
+npm run dev
