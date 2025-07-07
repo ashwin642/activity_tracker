@@ -17,8 +17,8 @@ const LoginRegister = () => {
   // Dynamic API URL detection for Codespaces
   const getApiUrl = () => {
     if (window.location.hostname.includes('app.github.dev')) {
-      // We're in Codespaces, replace the port from 3000 to 8000
-      const backendUrl = window.location.hostname.replace('-3000', '-8000');
+      // We're in Codespaces, replace the port from 3000/5173 to 8000
+      const backendUrl = window.location.hostname.replace('-3000', '-8000').replace('-5173', '-8000');
       return `https://${backendUrl}`;
     }
     return 'http://localhost:8000';
@@ -81,59 +81,75 @@ const LoginRegister = () => {
     setMessage('');
 
     try {
-      if (isLogin) {
-        // Login endpoint
-        const response = await fetch(`${API_BASE_URL}/login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            username: formData.username,
-            password: formData.password
-          })
-        });
+      const endpoint = isLogin ? '/login' : '/register';
+      const payload = isLogin 
+        ? { username: formData.username, password: formData.password }
+        : { username: formData.username, email: formData.email, password: formData.password };
 
-        if (response.ok) {
-          const data = await response.json();
+      console.log(`Making request to: ${API_BASE_URL}${endpoint}`);
+      
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (isLogin) {
           setMessage(`Welcome back, ${data.user.username}!`);
-          // Handle successful login (e.g., redirect, store token)
+          // Store token in localStorage for future requests
+          localStorage.setItem('token', data.access_token);
+          localStorage.setItem('user', JSON.stringify(data.user));
           console.log('Login successful:', data);
         } else {
-          const errorData = await response.json();
-          setMessage(errorData.detail || 'Login failed');
-        }
-      } else {
-        // Register user
-        const response = await fetch(`${API_BASE_URL}/register`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            username: formData.username,
-            email: formData.email,
-            password: formData.password
-          })
-        });
-
-        if (response.ok) {
-          const user = await response.json();
-          setMessage(`Welcome ${user.username}! Registration successful.`);
+          setMessage(`Welcome ${data.username}! Registration successful.`);
+          // Clear form on successful registration
           setFormData({
             username: '',
             email: '',
             password: '',
             confirmPassword: ''
           });
-        } else {
-          const errorData = await response.json();
-          setMessage(errorData.detail || 'Registration failed');
         }
+      } else {
+        // Handle different types of error responses
+        let errorMessage;
+        
+        if (response.status === 404) {
+          errorMessage = `Server not found. Please check if the API server is running at ${API_BASE_URL}`;
+        } else if (response.status === 0) {
+          errorMessage = 'Network error. Please check your connection and server status.';
+        } else {
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.detail || `Request failed with status ${response.status}`;
+          } catch (parseError) {
+            errorMessage = `Request failed with status ${response.status}. Unable to parse error response.`;
+          }
+        }
+        
+        setMessage(errorMessage);
       }
     } catch (error) {
       console.error('API Error:', error);
-      setMessage(`Network error. Please check if the server is running. API URL: ${API_BASE_URL}`);
+      
+      let errorMessage;
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = `Unable to connect to server at ${API_BASE_URL}. Please ensure the FastAPI server is running.`;
+      } else if (error.name === 'SyntaxError' && error.message.includes('JSON')) {
+        errorMessage = 'Server returned an invalid response. Please check server logs.';
+      } else {
+        errorMessage = `Network error: ${error.message}`;
+      }
+      
+      setMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -151,6 +167,21 @@ const LoginRegister = () => {
     setMessage('');
   };
 
+  // Test API connection
+  const testConnection = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/`);
+      if (response.ok) {
+        const data = await response.json();
+        setMessage(`Server is running: ${data.message}`);
+      } else {
+        setMessage(`Server responded with status ${response.status}`);
+      }
+    } catch (error) {
+      setMessage(`Cannot connect to server: ${error.message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
@@ -165,14 +196,21 @@ const LoginRegister = () => {
           <p className="text-gray-600">
             {isLogin ? 'Welcome back!' : 'Start your journey today'}
           </p>
-          {/* Debug info - remove this in production */}
-          <p className="text-xs text-gray-400 mt-2">
-            API: {API_BASE_URL}
-          </p>
+          
+          {/* Debug info and test connection */}
+          <div className="mt-4 p-2 bg-gray-50 rounded text-xs text-gray-500">
+            <p>API: {API_BASE_URL}</p>
+            <button 
+              onClick={testConnection}
+              className="mt-1 text-blue-600 hover:text-blue-800 underline"
+            >
+              Test Connection
+            </button>
+          </div>
         </div>
 
         {/* Form */}
-        <div className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Username Field */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -278,8 +316,7 @@ const LoginRegister = () => {
 
           {/* Submit Button */}
           <button
-            type="button"
-            onClick={handleSubmit}
+            type="submit"
             disabled={isLoading}
             className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors ${
               isLoading
@@ -296,18 +333,18 @@ const LoginRegister = () => {
               isLogin ? 'Sign In' : 'Create Account'
             )}
           </button>
+        </form>
 
-          {/* Message Display */}
-          {message && (
-            <div className={`p-3 rounded-lg text-sm ${
-              message.includes('successful') || message.includes('Welcome')
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-red-50 text-red-700 border border-red-200'
-            }`}>
-              {message}
-            </div>
-          )}
-        </div>
+        {/* Message Display */}
+        {message && (
+          <div className={`mt-4 p-3 rounded-lg text-sm ${
+            message.includes('successful') || message.includes('Welcome') || message.includes('running')
+              ? 'bg-green-50 text-green-700 border border-green-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {message}
+          </div>
+        )}
 
         {/* Toggle Mode */}
         <div className="mt-8 text-center">

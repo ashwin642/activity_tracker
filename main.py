@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from database import SessionLocal, engine, Base
+from database import SessionLocal, engine
 import models, schemas
 from datetime import timedelta
 from auth import (
@@ -11,20 +11,26 @@ from auth import (
     get_current_user, 
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
- 
-Base.metadata.create_all(bind=engine)
- 
-app = FastAPI()
+
+# Create database tables
+models.Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Activity Tracker API", version="1.0.0")
 
 # Add CORS middleware to allow React frontend to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev server ports
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://localhost:5173",
+        "https://ideal-invention-x59xp7gvv4g926xr9-3000.app.github.dev",
+        "https://ideal-invention-x59xp7gvv4g926xr9-5173.app.github.dev"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
- 
+
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -32,6 +38,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+@app.get("/")
+def root():
+    return {"message": "Activity Tracker API is running!", "version": "1.0.0"}
 
 @app.post("/login", response_model=schemas.Token)
 def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
@@ -55,7 +65,7 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user": db_user
     }
- 
+
 @app.post("/register", response_model=schemas.UserOut)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     # Check if username or email already exists in users.db
@@ -64,7 +74,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     ).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Username or email already registered")
- 
+
     hashed_password = get_password_hash(user.password)
     new_user = models.User(
         username=user.username,
@@ -176,3 +186,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: model
 def get_all_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     users = db.query(models.User).offset(skip).limit(limit).all()
     return users
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
