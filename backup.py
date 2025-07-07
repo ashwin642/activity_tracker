@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from database import SessionLocal, engine, Base
+from database import SessionLocal, engine
 import models, schemas
 from datetime import timedelta
 from auth import (
@@ -12,14 +12,19 @@ from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
  
-Base.metadata.create_all(bind=engine)
+models.Base.metadata.create_all(bind=engine)
  
 app = FastAPI()
 
 # Add CORS middleware to allow React frontend to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev server ports
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://localhost:5173",
+        "https://ideal-invention-x59xp7gvv4g926xr9-3000.app.github.dev",  # Your Codespaces frontend URL
+        "https://ideal-invention-x59xp7gvv4g926xr9-5173.app.github.dev"   # Alternative Vite port
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,6 +37,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+@app.get("/")
+def root():
+    return {"message": "Activity Tracker API is running!"}
 
 @app.post("/login", response_model=schemas.Token)
 def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
