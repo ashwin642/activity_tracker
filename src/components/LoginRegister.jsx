@@ -14,6 +14,18 @@ const LoginRegister = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState('');
 
+  // Dynamic API URL detection for Codespaces
+  const getApiUrl = () => {
+    if (window.location.hostname.includes('app.github.dev')) {
+      // We're in Codespaces, replace the port from 3000 to 8000
+      const backendUrl = window.location.hostname.replace('-3000', '-8000');
+      return `https://${backendUrl}`;
+    }
+    return 'http://localhost:8000';
+  };
+
+  const API_BASE_URL = getApiUrl();
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -71,7 +83,7 @@ const LoginRegister = () => {
     try {
       if (isLogin) {
         // Login endpoint
-        const response = await fetch('http://localhost:8000/login', {
+        const response = await fetch(`${API_BASE_URL}/login`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -84,15 +96,16 @@ const LoginRegister = () => {
 
         if (response.ok) {
           const data = await response.json();
-          setMessage(`Welcome back, ${data.username}!`);
+          setMessage(`Welcome back, ${data.user.username}!`);
           // Handle successful login (e.g., redirect, store token)
+          console.log('Login successful:', data);
         } else {
           const errorData = await response.json();
           setMessage(errorData.detail || 'Login failed');
         }
       } else {
         // Register user
-        const response = await fetch('http://localhost:8000/register', {
+        const response = await fetch(`${API_BASE_URL}/register`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -119,7 +132,8 @@ const LoginRegister = () => {
         }
       }
     } catch (error) {
-      setMessage('Network error. Please check if the server is running.');
+      console.error('API Error:', error);
+      setMessage(`Network error. Please check if the server is running. API URL: ${API_BASE_URL}`);
     } finally {
       setIsLoading(false);
     }
@@ -150,6 +164,10 @@ const LoginRegister = () => {
           </h1>
           <p className="text-gray-600">
             {isLogin ? 'Welcome back!' : 'Start your journey today'}
+          </p>
+          {/* Debug info - remove this in production */}
+          <p className="text-xs text-gray-400 mt-2">
+            API: {API_BASE_URL}
           </p>
         </div>
 

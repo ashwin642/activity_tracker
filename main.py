@@ -12,7 +12,7 @@ from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
  
-models.Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
  
 app = FastAPI()
 
