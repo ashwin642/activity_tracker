@@ -3,8 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine
 import models, schemas
-from passlib.context import CryptContext
-from typing import Optional
+from datetime import timedelta
+from auth import (
+    get_password_hash, 
+    verify_password, 
+    create_access_token, 
+    get_current_user, 
+    ACCESS_TOKEN_EXPIRE_MINUTES
+)
  
 models.Base.metadata.create_all(bind=engine)
  
@@ -19,8 +25,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
  
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
- 
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -28,14 +32,8 @@ def get_db():
         yield db
     finally:
         db.close()
- 
-def get_password_hash(password):
-    return pwd_context.hash(password)
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-@app.post("/login", response_model=schemas.UserOut)
+@app.post("/login", response_model=schemas.Token)
 def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     # Find user by username in the users.db SQLite database
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
@@ -46,7 +44,17 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     if not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
-    return db_user
+    # Create access token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": db_user.username}, expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": db_user
+    }
  
 @app.post("/register", response_model=schemas.UserOut)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -69,15 +77,19 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
+@app.get("/me", response_model=schemas.UserOut)
+def get_current_user_info(current_user: models.User = Depends(get_current_user)):
+    return current_user
+
 @app.get("/users/{user_id}", response_model=schemas.UserOut)
-def get_user(user_id: int, db: Session = Depends(get_db)):
+def get_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
 @app.put("/users/{user_id}", response_model=schemas.UserOut)
-def update_user(user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
+def update_user(user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     # Get the existing user from users.db
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
@@ -113,7 +125,7 @@ def update_user(user_id: int, user_update: schemas.UserUpdate, db: Session = Dep
     return db_user
 
 @app.patch("/users/{user_id}", response_model=schemas.UserOut)
-def partial_update_user(user_id: int, user_update: schemas.UserPartialUpdate, db: Session = Depends(get_db)):
+def partial_update_user(user_id: int, user_update: schemas.UserPartialUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     # Get the existing user from users.db
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
@@ -151,7 +163,7 @@ def partial_update_user(user_id: int, user_update: schemas.UserPartialUpdate, db
     return db_user
 
 @app.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -161,6 +173,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     return {"message": "User deleted successfully"}
 
 @app.get("/users", response_model=list[schemas.UserOut])
-def get_all_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_all_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     users = db.query(models.User).offset(skip).limit(limit).all()
     return users
