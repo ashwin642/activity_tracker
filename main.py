@@ -24,10 +24,12 @@ app.add_middleware(
         "http://localhost:3000", 
         "http://localhost:5173",
         "https://ideal-invention-x59xp7gvv4g926xr9-3000.app.github.dev",
-        "https://ideal-invention-x59xp7gvv4g926xr9-5173.app.github.dev"
+        "https://ideal-invention-x59xp7gvv4g926xr9-5173.app.github.dev",
+        # Add wildcard for development (remove in production)
+        "https://*.app.github.dev"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 
@@ -68,6 +70,8 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
 
 @app.post("/register", response_model=schemas.UserOut)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    print(f"Received registration request for user: {user.username}")  # Debug log
+    
     # Check if username or email already exists in users.db
     db_user = db.query(models.User).filter(
         (models.User.username == user.username) | (models.User.email == user.email)
@@ -85,6 +89,8 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    print(f"User {user.username} registered successfully")  # Debug log
     return new_user
 
 @app.get("/me", response_model=schemas.UserOut)
@@ -187,6 +193,11 @@ def get_all_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
     users = db.query(models.User).offset(skip).limit(limit).all()
     return users
 
+# Add this for debugging
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "message": "API is running"}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

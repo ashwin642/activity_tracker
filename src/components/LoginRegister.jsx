@@ -123,9 +123,9 @@ const LoginRegister = () => {
         let errorMessage;
         
         if (response.status === 404) {
-          errorMessage = `Server not found. Please check if the API server is running at ${API_BASE_URL}`;
+          errorMessage = 'Server not found. Please try again later.';
         } else if (response.status === 0) {
-          errorMessage = 'Network error. Please check your connection and server status.';
+          errorMessage = 'Network error. Please check your connection.';
         } else {
           try {
             const errorData = await response.json();
@@ -142,7 +142,7 @@ const LoginRegister = () => {
       
       let errorMessage;
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        errorMessage = `Unable to connect to server at ${API_BASE_URL}. Please ensure the FastAPI server is running.`;
+        errorMessage = 'Unable to connect to server. Please try again later.';
       } else if (error.name === 'SyntaxError' && error.message.includes('JSON')) {
         errorMessage = 'Server returned an invalid response. Please check server logs.';
       } else {
@@ -167,21 +167,6 @@ const LoginRegister = () => {
     setMessage('');
   };
 
-  // Test API connection
-  const testConnection = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/`);
-      if (response.ok) {
-        const data = await response.json();
-        setMessage(`Server is running: ${data.message}`);
-      } else {
-        setMessage(`Server responded with status ${response.status}`);
-      }
-    } catch (error) {
-      setMessage(`Cannot connect to server: ${error.message}`);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
@@ -196,17 +181,6 @@ const LoginRegister = () => {
           <p className="text-gray-600">
             {isLogin ? 'Welcome back!' : 'Start your journey today'}
           </p>
-          
-          {/* Debug info and test connection */}
-          <div className="mt-4 p-2 bg-gray-50 rounded text-xs text-gray-500">
-            <p>API: {API_BASE_URL}</p>
-            <button 
-              onClick={testConnection}
-              className="mt-1 text-blue-600 hover:text-blue-800 underline"
-            >
-              Test Connection
-            </button>
-          </div>
         </div>
 
         {/* Form */}
@@ -338,7 +312,7 @@ const LoginRegister = () => {
         {/* Message Display */}
         {message && (
           <div className={`mt-4 p-3 rounded-lg text-sm ${
-            message.includes('successful') || message.includes('Welcome') || message.includes('running')
+            message.includes('successful') || message.includes('Welcome')
               ? 'bg-green-50 text-green-700 border border-green-200'
               : 'bg-red-50 text-red-700 border border-red-200'
           }`}>
