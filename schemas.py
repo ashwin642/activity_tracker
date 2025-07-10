@@ -1,4 +1,5 @@
-from pydantic import BaseModel, EmailStr
+# schemas.py - Enhanced version
+from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
 from datetime import datetime
 
@@ -8,6 +9,18 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return v
+    
+    @validator('username')
+    def validate_username(cls, v):
+        if len(v) < 3:
+            raise ValueError('Username must be at least 3 characters long')
+        return v
 
 class UserLogin(BaseModel):
     username: str
@@ -34,5 +47,21 @@ class UserOut(UserBase):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
     user: UserOut
+
+class TokenRefresh(BaseModel):
+    refresh_token: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+# For password reset functionality (optional)
+class PasswordReset(BaseModel):
+    email: str
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str

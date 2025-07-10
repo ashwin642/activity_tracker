@@ -109,7 +109,7 @@ const LoginRegister = () => {
           localStorage.setItem('user', JSON.stringify(data.user));
           console.log('Login successful:', data);
         } else {
-          setMessage(`Welcome ${data.username}! Registration successful.`);
+          setMessage(`Welcome ${data.user.username}! Registration successful. Please sign in.`);
           // Clear form on successful registration
           setFormData({
             username: '',
@@ -117,6 +117,11 @@ const LoginRegister = () => {
             password: '',
             confirmPassword: ''
           });
+          // Switch back to login mode after successful registration
+          setTimeout(() => {
+            setIsLogin(true);
+            setMessage('');
+          }, 2000);
         }
       } else {
         // Handle different types of error responses
