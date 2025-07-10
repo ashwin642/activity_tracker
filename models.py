@@ -14,13 +14,13 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # User profile information
-    first_name = Column(String(50))
-    last_name = Column(String(50))
-    date_of_birth = Column(DateTime)
-    height = Column(Float)  # in cm
-    weight = Column(Float)  # in kg
-    activity_level = Column(String(20), default="moderate")  # sedentary, light, moderate, active, very_active
+    # User profile information - COMMENTED OUT until database is updated
+    # first_name = Column(String(50))
+    # last_name = Column(String(50))
+    # date_of_birth = Column(DateTime)
+    # height = Column(Float)  # in cm
+    # weight = Column(Float)  # in kg
+    # activity_level = Column(String(20), default="moderate")  # sedentary, light, moderate, active, very_active
     
     # Relationships
     activities = relationship("Activity", back_populates="user", cascade="all, delete-orphan")

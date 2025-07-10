@@ -158,7 +158,7 @@ def root():
     return {"message": "Activity Tracker API is running!", "version": "2.0.0"}
 
 # Authentication Endpoints
-@app.post("/auth/authenticate", response_model=schemas.Token)
+@app.post("/login", response_model=schemas.Token)
 def authenticate_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     """Initial authentication endpoint - No JWT required, returns tokens"""
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
@@ -210,9 +210,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     new_user = models.User(
         username=user.username,
         email=user.email,
-        hashed_password=hashed_password,
-        first_name=user.first_name,
-        last_name=user.last_name
+        hashed_password=hashed_password
     )
     
     db.add(new_user)
