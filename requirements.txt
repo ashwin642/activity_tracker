@@ -5,6 +5,9 @@ passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
 email-validator
+pydantic==2.5.0
+pydantic[email]==2.5.0
+python-dotenv==1.0.0
 
 # To run the backend:
 # uvicorn main:app --reload
