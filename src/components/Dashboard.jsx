@@ -12,7 +12,7 @@ import {
   Search
 } from 'lucide-react';
 
-const Dashboard = () => {
+const Dashboard = ({ onLogout }) => {
   const [user, setUser] = useState(null);
   const [activities, setActivities] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -42,6 +42,32 @@ const Dashboard = () => {
 
   const API_BASE_URL = getApiUrl();
 
+  // Get user-specific localStorage key
+  const getUserStorageKey = () => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      const user = JSON.parse(userData);
+      return `activities_${user.username}`;
+    }
+    return 'activities_default';
+  };
+
+  // Save activities to localStorage
+  const saveActivitiesToStorage = (activitiesData) => {
+    const storageKey = getUserStorageKey();
+    localStorage.setItem(storageKey, JSON.stringify(activitiesData));
+  };
+
+  // Load activities from localStorage
+  const loadActivitiesFromStorage = () => {
+    const storageKey = getUserStorageKey();
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    return [];
+  };
+
   // Load user data on component mount
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -51,7 +77,7 @@ const Dashboard = () => {
     loadActivities();
   }, []);
 
-  // Load activities from API
+  // Load activities from API or localStorage
   const loadActivities = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -65,19 +91,18 @@ const Dashboard = () => {
         const data = await response.json();
         setActivities(data);
         calculateStats(data);
+        // Also save to localStorage as backup
+        saveActivitiesToStorage(data);
       }
     } catch (error) {
-      console.error('Error loading activities:', error);
-      // Use sample data if API fails
-      const sampleActivities = [
-        { id: 1, name: 'Morning Run', category: 'exercise', duration: 30, date: '2024-07-10' },
-        { id: 2, name: 'Reading', category: 'learning', duration: 45, date: '2024-07-10' },
-        { id: 3, name: 'Meditation', category: 'wellness', duration: 15, date: '2024-07-09' },
-        { id: 4, name: 'Coding Practice', category: 'learning', duration: 60, date: '2024-07-09' },
-        { id: 5, name: 'Yoga', category: 'wellness', duration: 20, date: '2024-07-08' }
-      ];
-      setActivities(sampleActivities);
-      calculateStats(sampleActivities);
+      console.error('Error loading activities from API:', error);
+      
+      // Load from localStorage if API fails
+      const storedActivities = loadActivitiesFromStorage();
+      
+      console.log('Loaded activities from localStorage:', storedActivities);
+      setActivities(storedActivities);
+      calculateStats(storedActivities);
     }
   };
 
@@ -124,6 +149,8 @@ const Dashboard = () => {
       duration: parseInt(newActivity.duration)
     };
     
+    const updatedActivities = [...activities, activity];
+    
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/activities`, {
@@ -137,18 +164,19 @@ const Dashboard = () => {
       
       if (response.ok) {
         const savedActivity = await response.json();
-        setActivities(prev => [...prev, savedActivity]);
-        calculateStats([...activities, savedActivity]);
+        const activitiesWithSaved = [...activities, savedActivity];
+        setActivities(activitiesWithSaved);
+        calculateStats(activitiesWithSaved);
+        saveActivitiesToStorage(activitiesWithSaved);
       } else {
-        // Fallback to local storage
-        setActivities(prev => [...prev, activity]);
-        calculateStats([...activities, activity]);
+        throw new Error('API request failed');
       }
     } catch (error) {
-      console.error('Error adding activity:', error);
-      // Fallback to local storage
-      setActivities(prev => [...prev, activity]);
-      calculateStats([...activities, activity]);
+      console.error('Error adding activity to API:', error);
+      // Fallback to localStorage
+      setActivities(updatedActivities);
+      calculateStats(updatedActivities);
+      saveActivitiesToStorage(updatedActivities);
     }
     
     setNewActivity({
@@ -162,28 +190,44 @@ const Dashboard = () => {
 
   // Delete activity
   const deleteActivity = async (id) => {
+    const updatedActivities = activities.filter(a => a.id !== id);
+    
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${API_BASE_URL}/activities/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/activities/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
+      
+      if (response.ok) {
+        setActivities(updatedActivities);
+        calculateStats(updatedActivities);
+        saveActivitiesToStorage(updatedActivities);
+      } else {
+        throw new Error('API request failed');
+      }
     } catch (error) {
-      console.error('Error deleting activity:', error);
+      console.error('Error deleting activity from API:', error);
+      // Fallback to localStorage
+      setActivities(updatedActivities);
+      calculateStats(updatedActivities);
+      saveActivitiesToStorage(updatedActivities);
     }
-    
-    const updated = activities.filter(a => a.id !== id);
-    setActivities(updated);
-    calculateStats(updated);
   };
 
   // Logout function
   const handleLogout = () => {
+    // Don't clear activities from localStorage on logout
+    // Only clear authentication data
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    window.location.reload();
+    if (onLogout) {
+      onLogout();
+    } else {
+      window.location.reload();
+    }
   };
 
   // Filter activities
