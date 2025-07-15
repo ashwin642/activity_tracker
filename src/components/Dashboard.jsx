@@ -42,6 +42,100 @@ const Dashboard = ({ onLogout }) => {
 
   const API_BASE_URL = getApiUrl();
 
+  // Token management functions
+  const getStoredTokens = () => {
+    const accessToken = localStorage.getItem('access_token');
+    const refreshToken = localStorage.getItem('refresh_token');
+    return { accessToken, refreshToken };
+  };
+
+  const saveTokens = (accessToken, refreshToken) => {
+    localStorage.setItem('access_token', accessToken);
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+  };
+
+  const clearTokens = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('token'); // Legacy token
+  };
+
+  // Refresh access token using refresh token
+  const refreshAccessToken = async () => {
+    const { refreshToken } = getStoredTokens();
+    
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        saveTokens(data.access_token, data.refresh_token);
+        return data.access_token;
+      } else {
+        throw new Error('Failed to refresh token');
+      }
+    } catch (error) {
+      console.error('Error refreshing token:', error);
+      // If refresh fails, redirect to login
+      handleLogout();
+      throw error;
+    }
+  };
+
+  // Enhanced fetch with automatic token refresh
+  const authenticatedFetch = async (url, options = {}) => {
+    const { accessToken } = getStoredTokens();
+    
+    if (!accessToken) {
+      throw new Error('No access token available');
+    }
+
+    // Add authorization header
+    const headers = {
+      ...options.headers,
+      'Authorization': `Bearer ${accessToken}`
+    };
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers
+      });
+
+      // If token is expired, try to refresh
+      if (response.status === 401) {
+        console.log('Access token expired, attempting to refresh...');
+        const newAccessToken = await refreshAccessToken();
+        
+        // Retry the original request with new token
+        return await fetch(url, {
+          ...options,
+          headers: {
+            ...options.headers,
+            'Authorization': `Bearer ${newAccessToken}`
+          }
+        });
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Authenticated fetch error:', error);
+      throw error;
+    }
+  };
+
   // Get user-specific localStorage key
   const getUserStorageKey = () => {
     const userData = localStorage.getItem('user');
@@ -80,12 +174,7 @@ const Dashboard = ({ onLogout }) => {
   // Load activities from API or localStorage
   const loadActivities = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/activities`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}/activities`);
       
       if (response.ok) {
         const data = await response.json();
@@ -93,6 +182,8 @@ const Dashboard = ({ onLogout }) => {
         calculateStats(data);
         // Also save to localStorage as backup
         saveActivitiesToStorage(data);
+      } else {
+        throw new Error(`Failed to load activities: ${response.status}`);
       }
     } catch (error) {
       console.error('Error loading activities from API:', error);
@@ -108,7 +199,7 @@ const Dashboard = ({ onLogout }) => {
 
   // Calculate statistics
   const calculateStats = (activitiesData) => {
-    const totalDuration = activitiesData.reduce((sum, a) => sum + a.duration, 0);
+    const totalDuration = activitiesData.reduce((sum, a) => sum + (a.duration || 0), 0);
     
     setStats({
       totalActivities: activitiesData.length,
@@ -146,18 +237,16 @@ const Dashboard = ({ onLogout }) => {
     const activity = {
       ...newActivity,
       id: Date.now(),
-      duration: parseInt(newActivity.duration)
+      duration: parseInt(newActivity.duration) || 0
     };
     
     const updatedActivities = [...activities, activity];
     
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/activities`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/activities`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(activity)
       });
@@ -169,7 +258,7 @@ const Dashboard = ({ onLogout }) => {
         calculateStats(activitiesWithSaved);
         saveActivitiesToStorage(activitiesWithSaved);
       } else {
-        throw new Error('API request failed');
+        throw new Error(`Failed to add activity: ${response.status}`);
       }
     } catch (error) {
       console.error('Error adding activity to API:', error);
@@ -193,12 +282,8 @@ const Dashboard = ({ onLogout }) => {
     const updatedActivities = activities.filter(a => a.id !== id);
     
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/activities/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await authenticatedFetch(`${API_BASE_URL}/activities/${id}`, {
+        method: 'DELETE'
       });
       
       if (response.ok) {
@@ -206,7 +291,7 @@ const Dashboard = ({ onLogout }) => {
         calculateStats(updatedActivities);
         saveActivitiesToStorage(updatedActivities);
       } else {
-        throw new Error('API request failed');
+        throw new Error(`Failed to delete activity: ${response.status}`);
       }
     } catch (error) {
       console.error('Error deleting activity from API:', error);
@@ -219,10 +304,10 @@ const Dashboard = ({ onLogout }) => {
 
   // Logout function
   const handleLogout = () => {
-    // Don't clear activities from localStorage on logout
-    // Only clear authentication data
-    localStorage.removeItem('token');
+    // Clear all authentication data
+    clearTokens();
     localStorage.removeItem('user');
+    
     if (onLogout) {
       onLogout();
     } else {
@@ -233,7 +318,7 @@ const Dashboard = ({ onLogout }) => {
   // Filter activities
   const filteredActivities = activities.filter(activity => {
     const matchesFilter = filter === 'all' || activity.category === filter;
-    const matchesSearch = activity.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = !searchTerm || (activity.name && activity.name.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesFilter && matchesSearch;
   });
 
@@ -406,17 +491,17 @@ const Dashboard = ({ onLogout }) => {
                     <div className="flex items-center space-x-4">
                       <div className="flex-shrink-0">
                         <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(activity.category)}`}>
-                          {activity.category}
+                          {activity.category || 'uncategorized'}
                         </div>
                       </div>
                       
                       <div>
-                        <h3 className="text-lg font-medium text-gray-900">{activity.name}</h3>
+                        <h3 className="text-lg font-medium text-gray-900">{activity.name || 'Unnamed Activity'}</h3>
                         <div className="flex items-center text-sm text-gray-500 mt-1">
                           <Calendar className="w-4 h-4 mr-1" />
-                          {new Date(activity.date).toLocaleDateString()}
+                          {activity.date ? new Date(activity.date).toLocaleDateString() : 'No date'}
                           <Clock className="w-4 h-4 ml-4 mr-1" />
-                          {activity.duration} minutes
+                          {activity.duration || 0} minutes
                         </div>
                       </div>
                     </div>
