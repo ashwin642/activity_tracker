@@ -13,7 +13,6 @@ const LoginRegister = ({ onLogin, authToken }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState('');
-  const [debugInfo, setDebugInfo] = useState('');
 
   // Dynamic API URL detection for Codespaces
   const getApiUrl = () => {
@@ -78,40 +77,11 @@ const LoginRegister = ({ onLogin, authToken }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Add a test function to check auth token validity
-  const testAuthToken = async () => {
-    if (!authToken) {
-      setDebugInfo('No auth token available');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/terms/status`, {
-        method: 'GET',
-        headers: {
-          'X-Auth-Token': authToken,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setDebugInfo(`Auth token valid: ${JSON.stringify(data)}`);
-      } else {
-        const errorText = await response.text();
-        setDebugInfo(`Auth token test failed: ${response.status} - ${errorText}`);
-      }
-    } catch (error) {
-      setDebugInfo(`Auth token test error: ${error.message}`);
-    }
-  };
-
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
     setMessage('');
-    setDebugInfo('');
 
     try {
       const endpoint = isLogin ? '/login' : '/register';
@@ -128,25 +98,12 @@ const LoginRegister = ({ onLogin, authToken }) => {
       if (authToken) {
         headers['X-Auth-Token'] = authToken;
       }
-
-      // Debug logging
-      console.log('=== LOGIN DEBUG INFO ===');
-      console.log(`API URL: ${API_BASE_URL}${endpoint}`);
-      console.log('Auth Token:', authToken ? `${authToken.substring(0, 10)}...` : 'NOT PROVIDED');
-      console.log('Headers:', headers);
-      console.log('Payload:', { ...payload, password: '[REDACTED]' });
-      console.log('========================');
-
-      setDebugInfo(`Attempting ${isLogin ? 'login' : 'register'} with auth token: ${authToken ? 'Present' : 'Missing'}`);
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(payload)
       });
-
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (response.ok) {
         const data = await response.json();
@@ -156,7 +113,6 @@ const LoginRegister = ({ onLogin, authToken }) => {
           // Store token in localStorage for future requests
           localStorage.setItem('token', data.access_token);
           localStorage.setItem('user', JSON.stringify(data.user));
-          console.log('Login successful:', data);
           
           // Call the onLogin callback to navigate to dashboard
           if (onLogin) {
@@ -184,7 +140,6 @@ const LoginRegister = ({ onLogin, authToken }) => {
         
         try {
           responseText = await response.text();
-          console.log('Raw error response:', responseText);
           
           // Try to parse as JSON first
           let errorData;
@@ -211,18 +166,13 @@ const LoginRegister = ({ onLogin, authToken }) => {
           } else {
             errorMessage = errorData.detail || `Request failed with status ${response.status}`;
           }
-          
-          setDebugInfo(`Error ${response.status}: ${responseText}`);
         } catch (parseError) {
           errorMessage = `Request failed with status ${response.status}. Unable to parse error response.`;
-          setDebugInfo(`Parse error: ${parseError.message}`);
         }
         
         setMessage(errorMessage);
       }
     } catch (error) {
-      console.error('API Error:', error);
-      
       let errorMessage;
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         errorMessage = 'Unable to connect to server. Please check if the backend is running.';
@@ -233,7 +183,6 @@ const LoginRegister = ({ onLogin, authToken }) => {
       }
       
       setMessage(errorMessage);
-      setDebugInfo(`Network error: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -249,7 +198,6 @@ const LoginRegister = ({ onLogin, authToken }) => {
     });
     setErrors({});
     setMessage('');
-    setDebugInfo('');
   };
 
   return (
@@ -268,35 +216,13 @@ const LoginRegister = ({ onLogin, authToken }) => {
           </p>
           {authToken ? (
             <p className="text-xs text-green-600 mt-2">
-              ✓ Terms accepted ({authToken.substring(0, 8)}...)
+              ✓ Terms accepted
             </p>
           ) : (
             <p className="text-xs text-red-600 mt-2">
               ⚠ Please accept terms and conditions first
             </p>
           )}
-        </div>
-
-        {/* Debug Panel */}
-        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Debug Info:</span>
-            <button
-              onClick={testAuthToken}
-              className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
-            >
-              Test Auth Token
-            </button>
-          </div>
-          <div className="text-xs text-gray-600">
-            <div>API URL: {API_BASE_URL}</div>
-            <div>Auth Token: {authToken ? `${authToken.substring(0, 10)}...` : 'Not provided'}</div>
-            {debugInfo && (
-              <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
-                {debugInfo}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Auth Token Error */}
