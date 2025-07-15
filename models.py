@@ -15,20 +15,20 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     
-    # Profile information
-    first_name = Column(String)
-    last_name = Column(String)
-    date_of_birth = Column(DateTime)
-    height = Column(Float)  # in cm
-    weight = Column(Float)  # in kg
-    activity_level = Column(String)  # sedentary, lightly_active, moderately_active, very_active
+    # Profile information - COMMENTED OUT UNTIL MIGRATION IS RUN
+    # first_name = Column(String)
+    # last_name = Column(String)
+    # date_of_birth = Column(DateTime)
+    # height = Column(Float)  # in cm
+    # weight = Column(Float)  # in kg
+    # activity_level = Column(String)  # sedentary, lightly_active, moderately_active, very_active
     
-    # Terms acceptance tracking
+    # Terms acceptance tracking - KEEPING FOR TOKEN GENERATION
     terms_accepted = Column(Boolean, default=False)
     terms_accepted_at = Column(DateTime)
     terms_version = Column(String)  # Hash of terms content when accepted
     
-    # Timestamps
+    # Timestamps - KEEPING FOR FUNCTIONALITY
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
