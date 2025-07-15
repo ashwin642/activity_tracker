@@ -103,7 +103,7 @@ class UserOut(UserBase):
 
 # Activity Schemas
 class ActivityBase(BaseModel):
-    activity_type: str
+    activity_name: str  # ← CHANGED FROM activity_type to activity_name
     duration: int  # in minutes
     distance: Optional[float] = None  # in km
     calories_burned: Optional[int] = None
@@ -114,7 +114,7 @@ class ActivityCreate(ActivityBase):
     pass
 
 class ActivityUpdate(BaseModel):
-    activity_type: Optional[str] = None
+    activity_name: Optional[str] = None  # ← CHANGED FROM activity_type to activity_name
     duration: Optional[int] = None
     distance: Optional[float] = None
     calories_burned: Optional[int] = None

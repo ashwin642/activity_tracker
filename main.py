@@ -513,21 +513,28 @@ def get_activities(
     activities = query.order_by(desc(models.Activity.date)).offset(skip).limit(limit).all()
     return activities
 
-@app.get("/activities/{activity_id}", response_model=schemas.ActivityOut)
-def get_activity(
-    activity_id: int,
+@app.get("/activities", response_model=List[schemas.ActivityOut])
+def get_activities(
+    skip: int = 0,
+    limit: int = 100,
+    category: Optional[str] = None,  # Changed from activity_type to category
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     current_user: models.User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get a specific activity"""
-    activity = db.query(models.Activity).filter(
-        models.Activity.id == activity_id,
-        models.Activity.user_id == current_user.id
-    ).first()
+    """Get user's activities with optional filtering"""
+    query = db.query(models.Activity).filter(models.Activity.user_id == current_user.id)
     
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
+    if category:  # Updated filter
+        query = query.filter(models.Activity.category == category)
+    if start_date:
+        query = query.filter(models.Activity.date >= start_date)
+    if end_date:
+        query = query.filter(models.Activity.date <= end_date)
     
+    activities = query.order_by(desc(models.Activity.date)).offset(skip).limit(limit).all()
+    return activities
     return activity
 
 @app.put("/activities/{activity_id}", response_model=schemas.ActivityOut)

@@ -43,7 +43,7 @@ class Activity(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    activity_type = Column(String, nullable=False)
+    activity_name = Column(String, nullable=False)  # ← CHANGED FROM activity_type to activity_name
     duration = Column(Integer, nullable=False)  # in minutes
     distance = Column(Float)  # in km
     calories_burned = Column(Integer)
