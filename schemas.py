@@ -1,7 +1,33 @@
-# schemas.py - Enhanced version with dashboard data
+# schemas.py - Enhanced version with terms acceptance
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, List
 from datetime import datetime
+
+# Terms and Conditions Schemas
+class TermsRequest(BaseModel):
+    """Request to get current terms and conditions"""
+    pass
+
+class TermsResponse(BaseModel):
+    """Response with current terms and conditions"""
+    content: str
+    version: str
+    version_hash: str
+    effective_date: datetime
+
+class TermsAcceptanceRequest(BaseModel):
+    """Request to accept terms and conditions"""
+    terms_version_hash: str
+    user_identifier: str  # email or username for pre-registration
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+class TermsAcceptanceResponse(BaseModel):
+    """Response after accepting terms"""
+    terms_token: str
+    session_id: str
+    expires_at: datetime
+    message: str
 
 # User Schemas
 class UserBase(BaseModel):
@@ -10,6 +36,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    terms_token: str  # Required terms acceptance token
     
     @validator('password')
     def validate_password(cls, v):
@@ -26,6 +53,7 @@ class UserCreate(UserBase):
 class UserLogin(BaseModel):
     username: str
     password: str
+    terms_token: str  # Required terms acceptance token
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None
@@ -58,6 +86,9 @@ class UserOut(UserBase):
     height: Optional[float] = None
     weight: Optional[float] = None
     activity_level: Optional[str] = None
+    terms_accepted: bool
+    terms_accepted_at: Optional[datetime] = None
+    terms_version: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -136,6 +167,21 @@ class UserStatsOut(BaseModel):
     class Config:
         orm_mode = True
 
+# Terms Acceptance Schema
+class TermsAcceptanceOut(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    session_id: str
+    terms_version: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    accepted_at: datetime
+    email: Optional[str] = None
+    username: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
 # Dashboard Schema
 class DashboardData(BaseModel):
     user: UserOut
@@ -166,3 +212,8 @@ class PasswordReset(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
+
+# Error response schema
+class ErrorResponse(BaseModel):
+    detail: str
+    code: Optional[str] = None

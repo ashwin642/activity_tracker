@@ -1,4 +1,4 @@
-# auth.py - Enhanced version
+# auth.py - Enhanced version with terms and conditions
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
@@ -9,12 +9,15 @@ from sqlalchemy.orm import Session
 import models
 from database import SessionLocal
 import os
+import uuid
+import hashlib
 
 # JWT Configuration - Use environment variables for production
 SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-this-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+TERMS_TOKEN_EXPIRE_HOURS = 24  # Terms acceptance token expires in 24 hours
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
@@ -60,6 +63,18 @@ def create_refresh_token(data: dict) -> str:
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+def create_terms_token(user_identifier: str) -> str:
+    """Create a terms acceptance token."""
+    to_encode = {
+        "sub": user_identifier,
+        "exp": datetime.utcnow() + timedelta(hours=TERMS_TOKEN_EXPIRE_HOURS),
+        "type": "terms",
+        "iat": datetime.utcnow(),
+        "jti": str(uuid.uuid4())  # Unique token ID
+    }
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
 def verify_token(token: str, token_type: str = "access") -> str:
     """Verify a JWT token and return the username."""
     try:
@@ -88,6 +103,35 @@ def verify_token(token: str, token_type: str = "access") -> str:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+def verify_terms_token(token: str) -> dict:
+    """Verify a terms acceptance token and return payload."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        token_type_claim: str = payload.get("type")
+        
+        if token_type_claim != "terms":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid terms token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        return payload
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired terms token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+def generate_session_id() -> str:
+    """Generate a unique session ID for terms acceptance."""
+    return str(uuid.uuid4())
+
+def hash_terms_version(terms_content: str) -> str:
+    """Generate a hash of the terms content for version tracking."""
+    return hashlib.sha256(terms_content.encode()).hexdigest()
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security), 

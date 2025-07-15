@@ -1,5 +1,5 @@
-# main.py - Enhanced version with dashboard functionality
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+# main.py - Enhanced version with terms & conditions and auth token system
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -8,6 +8,8 @@ from database import SessionLocal, engine
 import models, schemas
 from datetime import timedelta, datetime, date
 from typing import List, Optional
+import secrets
+import hashlib
 from auth import (
     get_password_hash, 
     verify_password, 
@@ -30,10 +32,11 @@ app = FastAPI(
     A comprehensive activity tracker API with dashboard functionality:
     
     **Authentication Flow:**
-    1. **New Users**: Use `/register` to create account and get JWT tokens
-    2. **Existing Users**: Use `/auth/authenticate` to get JWT tokens with username/password
-    3. **Dashboard**: Use `/dashboard` to get complete user dashboard data
-    4. **Protected Endpoints**: All activity/goal endpoints require valid JWT tokens
+    1. **Terms Agreement**: Use `/terms/agree` to accept terms and get auth token
+    2. **New Users**: Use `/register` with auth token to create account and get JWT tokens
+    3. **Existing Users**: Use `/login` with auth token to get JWT tokens
+    4. **Dashboard**: Use `/dashboard` to get complete user dashboard data
+    5. **Protected Endpoints**: All activity/goal endpoints require valid JWT tokens
     
     **Dashboard Features:**
     - User profile information
@@ -58,6 +61,73 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
+
+# In-memory store for auth tokens (in production, use Redis or database)
+auth_tokens = {}
+
+# Terms and Conditions text
+TERMS_AND_CONDITIONS = """
+ACTIVITY TRACKER - TERMS AND CONDITIONS
+
+1. ACCEPTANCE OF TERMS
+By using this Activity Tracker application, you agree to be bound by these terms and conditions.
+
+2. USER RESPONSIBILITIES
+- You are responsible for maintaining the accuracy of your activity data
+- You must not share your account credentials with others
+- You must use the service in accordance with applicable laws
+
+3. DATA PRIVACY
+- We collect and store your activity data to provide the service
+- Your personal information will be handled according to our privacy policy
+- We do not sell your personal data to third parties
+
+4. SERVICE AVAILABILITY
+- We strive to maintain 99% uptime but cannot guarantee uninterrupted service
+- We reserve the right to perform maintenance that may temporarily affect service
+
+5. LIMITATION OF LIABILITY
+- The service is provided "as is" without warranties
+- We are not liable for any indirect, incidental, or consequential damages
+
+6. MODIFICATIONS
+- We may modify these terms at any time with notice to users
+- Continued use of the service constitutes acceptance of modified terms
+
+7. TERMINATION
+- You may terminate your account at any time
+- We may terminate accounts that violate these terms
+
+By clicking "I Agree", you acknowledge that you have read, understood, and agree to be bound by these terms and conditions.
+
+Last Updated: July 14, 2025
+"""
+
+def generate_auth_token():
+    """Generate a secure auth token"""
+    return secrets.token_urlsafe(32)
+
+def verify_auth_token(token: str) -> bool:
+    """Verify if auth token is valid"""
+    return token in auth_tokens and auth_tokens[token]["valid"]
+
+def get_auth_token_from_header(x_auth_token: Optional[str] = Header(None)):
+    """Dependency to extract and validate auth token from headers"""
+    if not x_auth_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Auth token required. Please agree to terms and conditions first.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not verify_auth_token(x_auth_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired auth token. Please agree to terms and conditions again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return x_auth_token
 
 # Dependency
 def get_db():
@@ -157,10 +227,51 @@ def get_or_create_user_stats(user_id: int, db: Session):
 def root():
     return {"message": "Activity Tracker API is running!", "version": "2.0.0"}
 
-# Authentication Endpoints
+# Terms and Conditions Endpoints
+@app.get("/terms")
+def get_terms():
+    """Get the terms and conditions text"""
+    return {
+        "terms": TERMS_AND_CONDITIONS,
+        "message": "Please review and agree to the terms and conditions to continue"
+    }
+
+@app.post("/terms/agree")
+def agree_to_terms():
+    """Agree to terms and conditions and receive auth token"""
+    auth_token = generate_auth_token()
+    
+    # Store token with timestamp (expires in 1 hour)
+    auth_tokens[auth_token] = {
+        "valid": True,
+        "created_at": datetime.now(),
+        "expires_at": datetime.now() + timedelta(hours=1)
+    }
+    
+    return {
+        "message": "Terms and conditions accepted successfully",
+        "auth_token": auth_token,
+        "expires_in": 3600,  # 1 hour in seconds
+        "note": "Use this auth token in the X-Auth-Token header for login/register"
+    }
+
+@app.get("/terms/status")
+def check_terms_status(auth_token: str = Depends(get_auth_token_from_header)):
+    """Check if user has agreed to terms (requires auth token)"""
+    return {
+        "agreed": True,
+        "auth_token_valid": True,
+        "message": "Terms and conditions have been accepted"
+    }
+
+# Authentication Endpoints (now require auth token)
 @app.post("/login", response_model=schemas.Token)
-def authenticate_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
-    """Initial authentication endpoint - No JWT required, returns tokens"""
+def authenticate_user(
+    user: schemas.UserLogin, 
+    db: Session = Depends(get_db),
+    auth_token: str = Depends(get_auth_token_from_header)
+):
+    """Login endpoint - Requires auth token from terms agreement"""
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if not db_user:
         raise HTTPException(
@@ -180,6 +291,10 @@ def authenticate_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
             detail="Inactive user account"
         )
     
+    # Invalidate the auth token after successful login
+    if auth_token in auth_tokens:
+        auth_tokens[auth_token]["valid"] = False
+    
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": db_user.username}, 
@@ -195,8 +310,12 @@ def authenticate_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     }
 
 @app.post("/register", response_model=schemas.Token)
-def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """Register a new user - No authentication required, returns JWT tokens"""
+def register_user(
+    user: schemas.UserCreate, 
+    db: Session = Depends(get_db),
+    auth_token: str = Depends(get_auth_token_from_header)
+):
+    """Register endpoint - Requires auth token from terms agreement"""
     db_user = db.query(models.User).filter(
         (models.User.username == user.username) | (models.User.email == user.email)
     ).first()
@@ -221,6 +340,10 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     user_stats = models.UserStats(user_id=new_user.id)
     db.add(user_stats)
     db.commit()
+    
+    # Invalidate the auth token after successful registration
+    if auth_token in auth_tokens:
+        auth_tokens[auth_token]["valid"] = False
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -571,6 +694,18 @@ def get_user_stats(
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "message": "API is running"}
+
+# Cleanup expired auth tokens (run periodically)
+@app.on_event("startup")
+async def cleanup_expired_tokens():
+    """Clean up expired auth tokens on startup"""
+    current_time = datetime.now()
+    expired_tokens = [
+        token for token, data in auth_tokens.items() 
+        if data["expires_at"] < current_time
+    ]
+    for token in expired_tokens:
+        del auth_tokens[token]
 
 if __name__ == "__main__":
     import uvicorn
