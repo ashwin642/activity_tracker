@@ -22,8 +22,8 @@ const TermsAndConditions = ({ onAccept }) => {
     setError(null);
     
     try {
-      // Fix: Use the correct API base URL
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://ideal-invention-x59xp7gvv4g926xr9-8000.app.github.dev/';
+      // Use hardcoded API URL to avoid environment variable issues
+      const API_BASE_URL = 'https://ideal-invention-x59xp7gvv4g926xr9-8000.app.github.dev';
       
       const response = await fetch(`${API_BASE_URL}/terms/agree`, {
         method: 'POST',
@@ -176,7 +176,7 @@ const TermsAndConditions = ({ onAccept }) => {
             </div>
 
             <div className="text-center py-4">
-              <p className="text-gray-500 text-sm">
+              <p className="text-sm text-gray-500">
                 Last updated: {new Date().toLocaleDateString()}
               </p>
             </div>
@@ -210,7 +210,7 @@ const TermsAndConditions = ({ onAccept }) => {
               <p className="font-medium">Error:</p>
               <p>{error}</p>
               <p className="text-xs mt-1">
-                Make sure your FastAPI server is running on https://ideal-invention-x59xp7gvv4g926xr9-8000
+                Make sure your server is running at: https://ideal-invention-x59xp7gvv4g926xr9-8000.app.github.dev
               </p>
             </div>
           )}
