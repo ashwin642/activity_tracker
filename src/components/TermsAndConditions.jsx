@@ -4,13 +4,8 @@ import { Shield, CheckCircle, Activity, ScrollText, Clock, Users, Lock } from 'l
 const TermsAndConditions = ({ onAccept }) => {
   const [hasScrolled, setHasScrolled] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
-
-  // Generate a unique auth token
-  const generateAuthToken = () => {
-    const timestamp = Date.now().toString();
-    const randomString = Math.random().toString(36).substring(2, 15);
-    return `auth_${timestamp}_${randomString}`;
-  };
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
@@ -20,10 +15,40 @@ const TermsAndConditions = ({ onAccept }) => {
     }
   };
 
-  const handleAccept = () => {
-    if (isChecked && hasScrolled) {
-      const token = generateAuthToken();
-      onAccept(token);
+  const handleAccept = async () => {
+    if (!isChecked || !hasScrolled) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/terms/agree', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          acceptedAt: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.token) {
+        onAccept(data.token);
+      } else {
+        throw new Error('No token received from server');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to accept terms. Please try again.');
+      console.error('Error accepting terms:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -177,17 +202,32 @@ const TermsAndConditions = ({ onAccept }) => {
             </p>
           )}
 
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+              {error}
+            </p>
+          )}
+
           <button
             onClick={handleAccept}
-            disabled={!isChecked || !hasScrolled}
+            disabled={!isChecked || !hasScrolled || isLoading}
             className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors flex items-center justify-center ${
-              isChecked && hasScrolled
+              isChecked && hasScrolled && !isLoading
                 ? 'bg-green-600 hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
                 : 'bg-gray-400 cursor-not-allowed'
             }`}
           >
-            <CheckCircle className="w-5 h-5 mr-2" />
-            Accept and Continue
+            {isLoading ? (
+              <>
+                <div className="w-5 h-5 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Processing...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="w-5 h-5 mr-2" />
+                Accept and Continue
+              </>
+            )}
           </button>
         </div>
       </div>
