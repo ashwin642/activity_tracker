@@ -26,6 +26,23 @@ const LoginRegister = ({ onLogin, authToken }) => {
 
   const API_BASE_URL = getApiUrl();
 
+  // Token management functions (consistent with Dashboard)
+  const saveTokens = (accessToken, refreshToken) => {
+    localStorage.setItem('access_token', accessToken);
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+    // Keep legacy token for backwards compatibility
+    localStorage.setItem('token', accessToken);
+  };
+
+  const clearTokens = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -110,9 +127,19 @@ const LoginRegister = ({ onLogin, authToken }) => {
         
         if (isLogin) {
           setMessage(`Welcome back, ${data.user.username}!`);
-          // Store token in localStorage for future requests
-          localStorage.setItem('token', data.access_token);
+          
+          // Store tokens properly (consistent with Dashboard)
+          saveTokens(data.access_token, data.refresh_token);
+          
+          // Store user data
           localStorage.setItem('user', JSON.stringify(data.user));
+          
+          // Debug logging
+          console.log('Login successful:', {
+            access_token: data.access_token ? 'present' : 'missing',
+            refresh_token: data.refresh_token ? 'present' : 'missing',
+            user: data.user
+          });
           
           // Call the onLogin callback to navigate to dashboard
           if (onLogin) {
@@ -120,6 +147,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
           }
         } else {
           setMessage(`Welcome ${data.user.username}! Registration successful. Please sign in.`);
+          
           // Clear form on successful registration
           setFormData({
             username: '',
@@ -127,6 +155,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
             password: '',
             confirmPassword: ''
           });
+          
           // Switch back to login mode after successful registration
           setTimeout(() => {
             setIsLogin(true);
@@ -150,6 +179,9 @@ const LoginRegister = ({ onLogin, authToken }) => {
           }
           
           if (response.status === 401) {
+            // Clear any stored tokens on auth failure
+            clearTokens();
+            
             if (errorData.detail && errorData.detail.includes('Auth token')) {
               errorMessage = 'Authentication token is invalid or expired. Please refresh the page and accept terms again.';
             } else if (errorData.detail && errorData.detail.includes('username or password')) {

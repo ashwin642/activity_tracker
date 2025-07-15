@@ -9,7 +9,9 @@ import {
   LogOut,
   Trash2,
   BarChart3,
-  Search
+  Search,
+  MapPin,
+  Zap
 } from 'lucide-react';
 
 const Dashboard = ({ onLogout }) => {
@@ -18,15 +20,21 @@ const Dashboard = ({ onLogout }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [newActivity, setNewActivity] = useState({
-    name: '',
-    category: '',
+    activity_name: '',
     duration: '',
-    date: new Date().toISOString().split('T')[0]
+    distance: '',
+    calories_burned: '',
+    notes: '',
+    date: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM format
   });
   const [stats, setStats] = useState({
     totalActivities: 0,
     totalDuration: 0,
+    totalDistance: 0,
+    totalCalories: 0,
     avgDuration: 0,
     streak: 0
   });
@@ -88,7 +96,6 @@ const Dashboard = ({ onLogout }) => {
       }
     } catch (error) {
       console.error('Error refreshing token:', error);
-      // If refresh fails, redirect to login
       handleLogout();
       throw error;
     }
@@ -99,11 +106,13 @@ const Dashboard = ({ onLogout }) => {
     const { accessToken } = getStoredTokens();
     
     if (!accessToken) {
+      handleLogout();
       throw new Error('No access token available');
     }
 
     // Add authorization header
     const headers = {
+      'Content-Type': 'application/json',
       ...options.headers,
       'Authorization': `Bearer ${accessToken}`
     };
@@ -117,16 +126,21 @@ const Dashboard = ({ onLogout }) => {
       // If token is expired, try to refresh
       if (response.status === 401) {
         console.log('Access token expired, attempting to refresh...');
-        const newAccessToken = await refreshAccessToken();
-        
-        // Retry the original request with new token
-        return await fetch(url, {
-          ...options,
-          headers: {
-            ...options.headers,
-            'Authorization': `Bearer ${newAccessToken}`
-          }
-        });
+        try {
+          const newAccessToken = await refreshAccessToken();
+          
+          // Retry the original request with new token
+          return await fetch(url, {
+            ...options,
+            headers: {
+              ...options.headers,
+              'Authorization': `Bearer ${newAccessToken}`
+            }
+          });
+        } catch (refreshError) {
+          handleLogout();
+          throw refreshError;
+        }
       }
 
       return response;
@@ -134,32 +148,6 @@ const Dashboard = ({ onLogout }) => {
       console.error('Authenticated fetch error:', error);
       throw error;
     }
-  };
-
-  // Get user-specific localStorage key
-  const getUserStorageKey = () => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const user = JSON.parse(userData);
-      return `activities_${user.username}`;
-    }
-    return 'activities_default';
-  };
-
-  // Save activities to localStorage
-  const saveActivitiesToStorage = (activitiesData) => {
-    const storageKey = getUserStorageKey();
-    localStorage.setItem(storageKey, JSON.stringify(activitiesData));
-  };
-
-  // Load activities from localStorage
-  const loadActivitiesFromStorage = () => {
-    const storageKey = getUserStorageKey();
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-    return [];
   };
 
   // Load user data on component mount
@@ -171,115 +159,149 @@ const Dashboard = ({ onLogout }) => {
     loadActivities();
   }, []);
 
-  // Load activities from API or localStorage
+  // Load activities from API
   const loadActivities = async () => {
+    setLoading(true);
+    setError('');
+    
     try {
       const response = await authenticatedFetch(`${API_BASE_URL}/activities`);
       
       if (response.ok) {
         const data = await response.json();
+        console.log('Loaded activities:', data);
         setActivities(data);
         calculateStats(data);
-        // Also save to localStorage as backup
-        saveActivitiesToStorage(data);
       } else {
-        throw new Error(`Failed to load activities: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Failed to load activities: ${response.status}`);
       }
     } catch (error) {
-      console.error('Error loading activities from API:', error);
-      
-      // Load from localStorage if API fails
-      const storedActivities = loadActivitiesFromStorage();
-      
-      console.log('Loaded activities from localStorage:', storedActivities);
-      setActivities(storedActivities);
-      calculateStats(storedActivities);
+      console.error('Error loading activities:', error);
+      setError('Failed to load activities. Please try again.');
+      setActivities([]);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Calculate statistics
   const calculateStats = (activitiesData) => {
     const totalDuration = activitiesData.reduce((sum, a) => sum + (a.duration || 0), 0);
+    const totalDistance = activitiesData.reduce((sum, a) => sum + (a.distance || 0), 0);
+    const totalCalories = activitiesData.reduce((sum, a) => sum + (a.calories_burned || 0), 0);
     
     setStats({
       totalActivities: activitiesData.length,
       totalDuration,
+      totalDistance,
+      totalCalories,
       avgDuration: activitiesData.length > 0 ? Math.round(totalDuration / activitiesData.length) : 0,
       streak: calculateStreak(activitiesData)
     });
   };
 
-  // Calculate streak
+  // Calculate streak based on activity dates
   const calculateStreak = (activitiesData) => {
-    const today = new Date();
+    if (activitiesData.length === 0) return 0;
+
+    // Sort activities by date (most recent first)
+    const sortedActivities = [...activitiesData].sort((a, b) => 
+      new Date(b.date) - new Date(a.date)
+    );
+
+    // Get unique dates
+    const uniqueDates = [...new Set(sortedActivities.map(a => 
+      new Date(a.date).toISOString().split('T')[0]
+    ))].sort((a, b) => new Date(b) - new Date(a));
+
+    if (uniqueDates.length === 0) return 0;
+
     let streak = 0;
-    let currentDate = new Date(today);
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
     
-    while (true) {
-      const dateStr = currentDate.toISOString().split('T')[0];
-      const hasActivity = activitiesData.some(a => a.date === dateStr);
+    // Check if there's an activity today or yesterday
+    const mostRecentDate = new Date(uniqueDates[0]);
+    const daysDiff = Math.floor((today - mostRecentDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff > 1) return 0; // No recent activity
+    
+    // Calculate consecutive days
+    for (let i = 0; i < uniqueDates.length - 1; i++) {
+      const currentDate = new Date(uniqueDates[i]);
+      const nextDate = new Date(uniqueDates[i + 1]);
+      const diff = Math.floor((currentDate - nextDate) / (1000 * 60 * 60 * 24));
       
-      if (hasActivity) {
+      if (diff === 1) {
         streak++;
-        currentDate.setDate(currentDate.getDate() - 1);
       } else {
         break;
       }
     }
     
-    return streak;
+    return streak + 1; // Add 1 for the first day
   };
 
   // Add new activity
   const handleAddActivity = async (e) => {
     e.preventDefault();
-    
-    const activity = {
-      ...newActivity,
-      id: Date.now(),
-      duration: parseInt(newActivity.duration) || 0
-    };
-    
-    const updatedActivities = [...activities, activity];
+    setLoading(true);
+    setError('');
     
     try {
+      // Prepare activity data according to your schema
+      const activityData = {
+        activity_name: newActivity.activity_name,
+        duration: parseInt(newActivity.duration) || 0,
+        distance: newActivity.distance ? parseFloat(newActivity.distance) : null,
+        calories_burned: newActivity.calories_burned ? parseInt(newActivity.calories_burned) : null,
+        notes: newActivity.notes || null,
+        date: new Date(newActivity.date).toISOString()
+      };
+      
+      console.log('Sending activity data:', activityData);
+      
       const response = await authenticatedFetch(`${API_BASE_URL}/activities`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(activity)
+        body: JSON.stringify(activityData)
       });
       
       if (response.ok) {
         const savedActivity = await response.json();
-        const activitiesWithSaved = [...activities, savedActivity];
-        setActivities(activitiesWithSaved);
-        calculateStats(activitiesWithSaved);
-        saveActivitiesToStorage(activitiesWithSaved);
+        console.log('Activity saved:', savedActivity);
+        
+        // Reload activities to get the latest data
+        await loadActivities();
+        
+        // Reset form
+        setNewActivity({
+          activity_name: '',
+          duration: '',
+          distance: '',
+          calories_burned: '',
+          notes: '',
+          date: new Date().toISOString().slice(0, 16)
+        });
+        setShowAddForm(false);
       } else {
-        throw new Error(`Failed to add activity: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to add activity');
       }
     } catch (error) {
-      console.error('Error adding activity to API:', error);
-      // Fallback to localStorage
-      setActivities(updatedActivities);
-      calculateStats(updatedActivities);
-      saveActivitiesToStorage(updatedActivities);
+      console.error('Error adding activity:', error);
+      setError('Failed to add activity. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    
-    setNewActivity({
-      name: '',
-      category: '',
-      duration: '',
-      date: new Date().toISOString().split('T')[0]
-    });
-    setShowAddForm(false);
   };
 
   // Delete activity
   const deleteActivity = async (id) => {
-    const updatedActivities = activities.filter(a => a.id !== id);
+    if (!confirm('Are you sure you want to delete this activity?')) return;
+    
+    setLoading(true);
+    setError('');
     
     try {
       const response = await authenticatedFetch(`${API_BASE_URL}/activities/${id}`, {
@@ -287,24 +309,22 @@ const Dashboard = ({ onLogout }) => {
       });
       
       if (response.ok) {
-        setActivities(updatedActivities);
-        calculateStats(updatedActivities);
-        saveActivitiesToStorage(updatedActivities);
+        // Reload activities to get the latest data
+        await loadActivities();
       } else {
-        throw new Error(`Failed to delete activity: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete activity');
       }
     } catch (error) {
-      console.error('Error deleting activity from API:', error);
-      // Fallback to localStorage
-      setActivities(updatedActivities);
-      calculateStats(updatedActivities);
-      saveActivitiesToStorage(updatedActivities);
+      console.error('Error deleting activity:', error);
+      setError('Failed to delete activity. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   // Logout function
   const handleLogout = () => {
-    // Clear all authentication data
     clearTokens();
     localStorage.removeItem('user');
     
@@ -317,22 +337,25 @@ const Dashboard = ({ onLogout }) => {
 
   // Filter activities
   const filteredActivities = activities.filter(activity => {
-    const matchesFilter = filter === 'all' || activity.category === filter;
-    const matchesSearch = !searchTerm || (activity.name && activity.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesFilter && matchesSearch;
+    const matchesSearch = !searchTerm || 
+      (activity.activity_name && activity.activity_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (activity.notes && activity.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+    return matchesSearch;
   });
 
-  // Get category color
-  const getCategoryColor = (category) => {
-    const colors = {
-      exercise: 'bg-red-100 text-red-800',
-      learning: 'bg-blue-100 text-blue-800',
-      wellness: 'bg-green-100 text-green-800',
-      work: 'bg-yellow-100 text-yellow-800',
-      hobby: 'bg-purple-100 text-purple-800',
-      default: 'bg-gray-100 text-gray-800'
-    };
-    return colors[category] || colors.default;
+  // Format date for display
+  const formatDate = (dateString) => {
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Invalid date';
+    }
   };
 
   return (
@@ -363,8 +386,19 @@ const Dashboard = ({ onLogout }) => {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex">
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
@@ -391,20 +425,32 @@ const Dashboard = ({ onLogout }) => {
           
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <BarChart3 className="w-6 h-6 text-yellow-600" />
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <MapPin className="w-6 h-6 text-purple-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm text-gray-600">Average Duration</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.avgDuration}m</p>
+                <p className="text-sm text-gray-600">Total Distance</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.totalDistance.toFixed(1)}km</p>
               </div>
             </div>
           </div>
           
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-purple-600" />
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <Zap className="w-6 h-6 text-orange-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm text-gray-600">Total Calories</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.totalCalories}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-yellow-600" />
               </div>
               <div className="ml-4">
                 <p className="text-sm text-gray-600">Current Streak</p>
@@ -412,24 +458,6 @@ const Dashboard = ({ onLogout }) => {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Quick Add Activity Section */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Quick Add Activity</h2>
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Activity
-            </button>
-          </div>
-          
-          <p className="text-gray-600">
-            Record your completed activities to track your progress and build streaks!
-          </p>
         </div>
 
         {/* Activities Section */}
@@ -451,24 +479,11 @@ const Dashboard = ({ onLogout }) => {
                   />
                 </div>
                 
-                {/* Filter */}
-                <select
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                >
-                  <option value="all">All Categories</option>
-                  <option value="exercise">Exercise</option>
-                  <option value="learning">Learning</option>
-                  <option value="wellness">Wellness</option>
-                  <option value="work">Work</option>
-                  <option value="hobby">Hobby</option>
-                </select>
-                
                 {/* Add Button */}
                 <button
                   onClick={() => setShowAddForm(true)}
-                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  disabled={loading}
+                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Activity
@@ -479,7 +494,12 @@ const Dashboard = ({ onLogout }) => {
 
           {/* Activities List */}
           <div className="divide-y divide-gray-200">
-            {filteredActivities.length === 0 ? (
+            {loading ? (
+              <div className="p-8 text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                <p className="mt-2 text-gray-600">Loading activities...</p>
+              </div>
+            ) : filteredActivities.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Activity className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                 <p>No activities found. Start by adding your first activity!</p>
@@ -490,26 +510,48 @@ const Dashboard = ({ onLogout }) => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
                       <div className="flex-shrink-0">
-                        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(activity.category)}`}>
-                          {activity.category || 'uncategorized'}
+                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                          <Activity className="w-6 h-6 text-green-600" />
                         </div>
                       </div>
                       
-                      <div>
-                        <h3 className="text-lg font-medium text-gray-900">{activity.name || 'Unnamed Activity'}</h3>
-                        <div className="flex items-center text-sm text-gray-500 mt-1">
-                          <Calendar className="w-4 h-4 mr-1" />
-                          {activity.date ? new Date(activity.date).toLocaleDateString() : 'No date'}
-                          <Clock className="w-4 h-4 ml-4 mr-1" />
-                          {activity.duration || 0} minutes
+                      <div className="flex-1">
+                        <h3 className="text-lg font-medium text-gray-900">
+                          {activity.activity_name || 'Unnamed Activity'}
+                        </h3>
+                        <div className="flex items-center text-sm text-gray-500 mt-1 flex-wrap gap-4">
+                          <div className="flex items-center">
+                            <Calendar className="w-4 h-4 mr-1" />
+                            {formatDate(activity.date)}
+                          </div>
+                          <div className="flex items-center">
+                            <Clock className="w-4 h-4 mr-1" />
+                            {activity.duration} min
+                          </div>
+                          {activity.distance && (
+                            <div className="flex items-center">
+                              <MapPin className="w-4 h-4 mr-1" />
+                              {activity.distance} km
+                            </div>
+                          )}
+                          {activity.calories_burned && (
+                            <div className="flex items-center">
+                              <Zap className="w-4 h-4 mr-1" />
+                              {activity.calories_burned} cal
+                            </div>
+                          )}
                         </div>
+                        {activity.notes && (
+                          <p className="text-sm text-gray-600 mt-2">{activity.notes}</p>
+                        )}
                       </div>
                     </div>
                     
                     <div className="flex items-center space-x-2">
                       <button
                         onClick={() => deleteActivity(activity.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        disabled={loading}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                         title="Delete activity"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -532,39 +574,21 @@ const Dashboard = ({ onLogout }) => {
             <form onSubmit={handleAddActivity} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Activity Name
+                  Activity Name *
                 </label>
                 <input
                   type="text"
-                  value={newActivity.name}
-                  onChange={(e) => setNewActivity({...newActivity, name: e.target.value})}
+                  value={newActivity.activity_name}
+                  onChange={(e) => setNewActivity({...newActivity, activity_name: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="e.g., Morning Run, Yoga Session"
                   required
                 />
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
-                </label>
-                <select
-                  value={newActivity.category}
-                  onChange={(e) => setNewActivity({...newActivity, category: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  required
-                >
-                  <option value="">Select a category</option>
-                  <option value="exercise">Exercise</option>
-                  <option value="learning">Learning</option>
-                  <option value="wellness">Wellness</option>
-                  <option value="work">Work</option>
-                  <option value="hobby">Hobby</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Duration (minutes)
+                  Duration (minutes) *
                 </label>
                 <input
                   type="number"
@@ -572,20 +596,61 @@ const Dashboard = ({ onLogout }) => {
                   onChange={(e) => setNewActivity({...newActivity, duration: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   min="1"
+                  placeholder="30"
                   required
                 />
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Date
+                  Distance (km)
                 </label>
                 <input
-                  type="date"
+                  type="number"
+                  step="0.1"
+                  value={newActivity.distance}
+                  onChange={(e) => setNewActivity({...newActivity, distance: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="5.0"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Calories Burned
+                </label>
+                <input
+                  type="number"
+                  value={newActivity.calories_burned}
+                  onChange={(e) => setNewActivity({...newActivity, calories_burned: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="300"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Date & Time *
+                </label>
+                <input
+                  type="datetime-local"
                   value={newActivity.date}
                   onChange={(e) => setNewActivity({...newActivity, date: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={newActivity.notes}
+                  onChange={(e) => setNewActivity({...newActivity, notes: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  rows="3"
+                  placeholder="How did it go? Any observations?"
                 />
               </div>
               
@@ -599,9 +664,10 @@ const Dashboard = ({ onLogout }) => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  disabled={loading}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
-                  Add Activity
+                  {loading ? 'Adding...' : 'Add Activity'}
                 </button>
               </div>
             </form>
