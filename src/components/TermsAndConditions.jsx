@@ -41,8 +41,9 @@ const TermsAndConditions = ({ onAccept }) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        // The FastAPI endpoint doesn't expect a body, so we can remove this
-        // or keep it if you want to log acceptance details
+        // The terms acceptance doesn't require auth token since it generates one
+        // But if you need to pass any data, you can add it here
+        body: JSON.stringify({})
       });
 
       console.log('Response status:', response.status);
@@ -56,7 +57,7 @@ const TermsAndConditions = ({ onAccept }) => {
       const data = await response.json();
       console.log('Terms acceptance response:', data);
       
-      // Fix: The FastAPI returns 'auth_token', not 'token'
+      // The FastAPI returns 'auth_token', not 'token'
       if (data.auth_token) {
         onAccept(data.auth_token);
       } else {

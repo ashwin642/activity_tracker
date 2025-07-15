@@ -44,6 +44,11 @@ const LoginRegister = ({ onLogin, authToken }) => {
   const validateForm = () => {
     const newErrors = {};
 
+    // Check for auth token first
+    if (!authToken) {
+      newErrors.authToken = 'Please accept the terms and conditions first';
+    }
+
     if (!formData.username.trim()) {
       newErrors.username = 'Username is required';
     } else if (formData.username.length < 3) {
@@ -72,9 +77,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
@@ -83,17 +86,26 @@ const LoginRegister = ({ onLogin, authToken }) => {
     try {
       const endpoint = isLogin ? '/login' : '/register';
       const payload = isLogin 
-        ? { username: formData.username, password: formData.password, auth_token: authToken }
-        : { username: formData.username, email: formData.email, password: formData.password, auth_token: authToken };
+        ? { username: formData.username, password: formData.password }
+        : { username: formData.username, email: formData.email, password: formData.password };
+
+      // Create headers object with auth token
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add auth token to headers - now required for both login and register
+      if (authToken) {
+        headers['X-Auth-Token'] = authToken;
+      }
 
       console.log(`Making request to: ${API_BASE_URL}${endpoint}`);
-      console.log('Payload with auth token:', payload);
+      console.log('Payload (no auth token):', payload);
+      console.log('Headers:', headers);
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify(payload)
       });
 
@@ -155,33 +167,17 @@ const LoginRegister = ({ onLogin, authToken }) => {
     } catch (error) {
       console.error('API Error:', error);
       
-      // For demo purposes, allow login without backend
-      if (isLogin) {
-        setMessage('Backend not available. Using demo login.');
-        // Create a demo user
-        const demoUser = {
-          username: formData.username,
-          email: 'demo@example.com'
-        };
-        localStorage.setItem('token', 'demo_token');
-        localStorage.setItem('user', JSON.stringify(demoUser));
-        
-        // Call the onLogin callback to navigate to dashboard
-        if (onLogin) {
-          onLogin();
-        }
+      // Remove demo login fallback for login - auth token is now required
+      let errorMessage;
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = 'Unable to connect to server. Please try again later.';
+      } else if (error.name === 'SyntaxError' && error.message.includes('JSON')) {
+        errorMessage = 'Server returned an invalid response. Please check server logs.';
       } else {
-        let errorMessage;
-        if (error.name === 'TypeError' && error.message.includes('fetch')) {
-          errorMessage = 'Unable to connect to server. Please try again later.';
-        } else if (error.name === 'SyntaxError' && error.message.includes('JSON')) {
-          errorMessage = 'Server returned an invalid response. Please check server logs.';
-        } else {
-          errorMessage = `Network error: ${error.message}`;
-        }
-        
-        setMessage(errorMessage);
+        errorMessage = `Network error: ${error.message}`;
       }
+      
+      setMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -213,15 +209,26 @@ const LoginRegister = ({ onLogin, authToken }) => {
           <p className="text-gray-600">
             {isLogin ? 'Welcome back!' : 'Start your journey today'}
           </p>
-          {authToken && (
+          {authToken ? (
             <p className="text-xs text-green-600 mt-2">
               ✓ Terms accepted
+            </p>
+          ) : (
+            <p className="text-xs text-red-600 mt-2">
+              ⚠ Please accept terms and conditions first
             </p>
           )}
         </div>
 
+        {/* Auth Token Error */}
+        {errors.authToken && (
+          <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">
+            {errors.authToken}
+          </div>
+        )}
+
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-6">
           {/* Username Field */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -327,10 +334,10 @@ const LoginRegister = ({ onLogin, authToken }) => {
 
           {/* Submit Button */}
           <button
-            type="submit"
-            disabled={isLoading}
+            onClick={handleSubmit}
+            disabled={isLoading || !authToken}
             className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors ${
-              isLoading
+              isLoading || !authToken
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
             }`}
@@ -344,7 +351,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
               isLogin ? 'Sign In' : 'Create Account'
             )}
           </button>
-        </form>
+        </div>
 
         {/* Message Display */}
         {message && (
