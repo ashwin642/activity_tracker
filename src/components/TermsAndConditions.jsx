@@ -22,27 +22,30 @@ const TermsAndConditions = ({ onAccept }) => {
     setError(null);
     
     try {
-      const response = await fetch('/terms/agree', {
+      // Fix: Use the correct API base URL
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://ideal-invention-x59xp7gvv4g926xr9-8000.app.github.dev/';
+      
+      const response = await fetch(`${API_BASE_URL}/terms/agree`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          acceptedAt: new Date().toISOString(),
-          userAgent: navigator.userAgent,
-        }),
+        // The FastAPI endpoint doesn't expect a body, so we can remove this
+        // or keep it if you want to log acceptance details
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
       
-      if (data.token) {
-        onAccept(data.token);
+      // Fix: The FastAPI returns 'auth_token', not 'token'
+      if (data.auth_token) {
+        onAccept(data.auth_token);
       } else {
-        throw new Error('No token received from server');
+        throw new Error('No auth token received from server');
       }
     } catch (err) {
       setError(err.message || 'Failed to accept terms. Please try again.');
@@ -203,9 +206,13 @@ const TermsAndConditions = ({ onAccept }) => {
           )}
 
           {error && (
-            <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
-              {error}
-            </p>
+            <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+              <p className="font-medium">Error:</p>
+              <p>{error}</p>
+              <p className="text-xs mt-1">
+                Make sure your FastAPI server is running on https://ideal-invention-x59xp7gvv4g926xr9-8000
+              </p>
+            </div>
           )}
 
           <button

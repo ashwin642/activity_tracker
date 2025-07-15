@@ -11,20 +11,12 @@ function App() {
   const [authToken, setAuthToken] = useState(null);
 
   useEffect(() => {
-    // Check if user has accepted terms
-    const termsAccepted = localStorage.getItem('termsAccepted');
-    const storedAuthToken = localStorage.getItem('authToken');
-    
-    if (termsAccepted && storedAuthToken) {
-      setHasAcceptedTerms(true);
-      setAuthToken(storedAuthToken);
-    }
-    
-    // Check if user is already logged in
+    // Don't check for previously accepted terms - always require acceptance
+    // Only check if user is already logged in
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     
-    if (token && user && termsAccepted) {
+    if (token && user) {
       setIsLoggedIn(true);
     }
     
@@ -34,8 +26,7 @@ function App() {
   const handleTermsAccepted = (token) => {
     setHasAcceptedTerms(true);
     setAuthToken(token);
-    localStorage.setItem('termsAccepted', 'true');
-    localStorage.setItem('authToken', token);
+    // Don't save to localStorage anymore - let it be session-only
   };
 
   const handleLogin = () => {
@@ -46,6 +37,9 @@ function App() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setIsLoggedIn(false);
+    // Reset terms acceptance on logout so it's required again
+    setHasAcceptedTerms(false);
+    setAuthToken(null);
   };
 
   if (isLoading) {
