@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, Activity, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, Activity, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 const LoginRegister = ({ onLogin, authToken }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,6 +13,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState('');
+  const [debugInfo, setDebugInfo] = useState('');
 
   // Dynamic API URL detection for Codespaces
   const getApiUrl = () => {
@@ -77,11 +78,40 @@ const LoginRegister = ({ onLogin, authToken }) => {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Add a test function to check auth token validity
+  const testAuthToken = async () => {
+    if (!authToken) {
+      setDebugInfo('No auth token available');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/terms/status`, {
+        method: 'GET',
+        headers: {
+          'X-Auth-Token': authToken,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDebugInfo(`Auth token valid: ${JSON.stringify(data)}`);
+      } else {
+        const errorText = await response.text();
+        setDebugInfo(`Auth token test failed: ${response.status} - ${errorText}`);
+      }
+    } catch (error) {
+      setDebugInfo(`Auth token test error: ${error.message}`);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
     setMessage('');
+    setDebugInfo('');
 
     try {
       const endpoint = isLogin ? '/login' : '/register';
@@ -99,9 +129,15 @@ const LoginRegister = ({ onLogin, authToken }) => {
         headers['X-Auth-Token'] = authToken;
       }
 
-      console.log(`Making request to: ${API_BASE_URL}${endpoint}`);
-      console.log('Payload (no auth token):', payload);
+      // Debug logging
+      console.log('=== LOGIN DEBUG INFO ===');
+      console.log(`API URL: ${API_BASE_URL}${endpoint}`);
+      console.log('Auth Token:', authToken ? `${authToken.substring(0, 10)}...` : 'NOT PROVIDED');
       console.log('Headers:', headers);
+      console.log('Payload:', { ...payload, password: '[REDACTED]' });
+      console.log('========================');
+
+      setDebugInfo(`Attempting ${isLogin ? 'login' : 'register'} with auth token: ${authToken ? 'Present' : 'Missing'}`);
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
@@ -110,7 +146,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
       });
 
       console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (response.ok) {
         const data = await response.json();
@@ -142,24 +178,44 @@ const LoginRegister = ({ onLogin, authToken }) => {
           }, 2000);
         }
       } else {
-        // Handle different types of error responses
+        // Enhanced error handling with full response details
         let errorMessage;
+        let responseText = '';
         
-        if (response.status === 404) {
-          errorMessage = 'Server not found. Please try again later.';
-        } else if (response.status === 0) {
-          errorMessage = 'Network error. Please check your connection.';
-        } else if (response.status === 401) {
-          errorMessage = 'Invalid auth token. Please refresh the page and try again.';
-        } else if (response.status === 403) {
-          errorMessage = 'Terms not accepted or invalid auth token.';
-        } else {
+        try {
+          responseText = await response.text();
+          console.log('Raw error response:', responseText);
+          
+          // Try to parse as JSON first
+          let errorData;
           try {
-            const errorData = await response.json();
-            errorMessage = errorData.detail || `Request failed with status ${response.status}`;
-          } catch (parseError) {
-            errorMessage = `Request failed with status ${response.status}. Unable to parse error response.`;
+            errorData = JSON.parse(responseText);
+          } catch {
+            errorData = { detail: responseText };
           }
+          
+          if (response.status === 401) {
+            if (errorData.detail && errorData.detail.includes('Auth token')) {
+              errorMessage = 'Authentication token is invalid or expired. Please refresh the page and accept terms again.';
+            } else if (errorData.detail && errorData.detail.includes('username or password')) {
+              errorMessage = 'Invalid username or password. Please check your credentials.';
+            } else {
+              errorMessage = `Authentication failed: ${errorData.detail || 'Invalid credentials'}`;
+            }
+          } else if (response.status === 400) {
+            errorMessage = errorData.detail || 'Bad request. Please check your input.';
+          } else if (response.status === 404) {
+            errorMessage = 'Server endpoint not found. Please check if the backend is running.';
+          } else if (response.status === 500) {
+            errorMessage = 'Internal server error. Please try again later.';
+          } else {
+            errorMessage = errorData.detail || `Request failed with status ${response.status}`;
+          }
+          
+          setDebugInfo(`Error ${response.status}: ${responseText}`);
+        } catch (parseError) {
+          errorMessage = `Request failed with status ${response.status}. Unable to parse error response.`;
+          setDebugInfo(`Parse error: ${parseError.message}`);
         }
         
         setMessage(errorMessage);
@@ -167,10 +223,9 @@ const LoginRegister = ({ onLogin, authToken }) => {
     } catch (error) {
       console.error('API Error:', error);
       
-      // Remove demo login fallback for login - auth token is now required
       let errorMessage;
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        errorMessage = 'Unable to connect to server. Please try again later.';
+        errorMessage = 'Unable to connect to server. Please check if the backend is running.';
       } else if (error.name === 'SyntaxError' && error.message.includes('JSON')) {
         errorMessage = 'Server returned an invalid response. Please check server logs.';
       } else {
@@ -178,6 +233,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
       }
       
       setMessage(errorMessage);
+      setDebugInfo(`Network error: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -193,6 +249,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
     });
     setErrors({});
     setMessage('');
+    setDebugInfo('');
   };
 
   return (
@@ -211,7 +268,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
           </p>
           {authToken ? (
             <p className="text-xs text-green-600 mt-2">
-              ✓ Terms accepted
+              ✓ Terms accepted ({authToken.substring(0, 8)}...)
             </p>
           ) : (
             <p className="text-xs text-red-600 mt-2">
@@ -220,9 +277,32 @@ const LoginRegister = ({ onLogin, authToken }) => {
           )}
         </div>
 
+        {/* Debug Panel */}
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Debug Info:</span>
+            <button
+              onClick={testAuthToken}
+              className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+            >
+              Test Auth Token
+            </button>
+          </div>
+          <div className="text-xs text-gray-600">
+            <div>API URL: {API_BASE_URL}</div>
+            <div>Auth Token: {authToken ? `${authToken.substring(0, 10)}...` : 'Not provided'}</div>
+            {debugInfo && (
+              <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
+                {debugInfo}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Auth Token Error */}
         {errors.authToken && (
-          <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">
+          <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200 flex items-center">
+            <AlertCircle className="w-4 h-4 mr-2" />
             {errors.authToken}
           </div>
         )}
