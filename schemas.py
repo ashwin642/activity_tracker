@@ -1,4 +1,4 @@
-# schemas.py - Enhanced version with terms acceptance
+# schemas.py - Enhanced version with terms acceptance (CORRECTED)
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, List
 from datetime import datetime
@@ -36,7 +36,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
-    terms_token: str  # Required terms acceptance token
+    # terms_token is passed in header, not body
     
     @validator('password')
     def validate_password(cls, v):
@@ -53,7 +53,13 @@ class UserCreate(UserBase):
 class UserLogin(BaseModel):
     username: str
     password: str
-    terms_token: str  # Required terms acceptance token
+    # terms_token is passed in header (X-Auth-Token), not in request body
+    
+    @validator('username')
+    def validate_username(cls, v):
+        if len(v) < 3:
+            raise ValueError('Username must be at least 3 characters long')
+        return v
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None

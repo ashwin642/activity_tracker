@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Mail, Lock, Activity, Eye, EyeOff } from 'lucide-react';
 
-const LoginRegister = ({ onLogin }) => {
+const LoginRegister = ({ onLogin, authToken }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
@@ -83,10 +83,11 @@ const LoginRegister = ({ onLogin }) => {
     try {
       const endpoint = isLogin ? '/login' : '/register';
       const payload = isLogin 
-        ? { username: formData.username, password: formData.password }
-        : { username: formData.username, email: formData.email, password: formData.password };
+        ? { username: formData.username, password: formData.password, auth_token: authToken }
+        : { username: formData.username, email: formData.email, password: formData.password, auth_token: authToken };
 
       console.log(`Making request to: ${API_BASE_URL}${endpoint}`);
+      console.log('Payload with auth token:', payload);
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
@@ -136,6 +137,10 @@ const LoginRegister = ({ onLogin }) => {
           errorMessage = 'Server not found. Please try again later.';
         } else if (response.status === 0) {
           errorMessage = 'Network error. Please check your connection.';
+        } else if (response.status === 401) {
+          errorMessage = 'Invalid auth token. Please refresh the page and try again.';
+        } else if (response.status === 403) {
+          errorMessage = 'Terms not accepted or invalid auth token.';
         } else {
           try {
             const errorData = await response.json();
@@ -208,6 +213,11 @@ const LoginRegister = ({ onLogin }) => {
           <p className="text-gray-600">
             {isLogin ? 'Welcome back!' : 'Start your journey today'}
           </p>
+          {authToken && (
+            <p className="text-xs text-green-600 mt-2">
+              ✓ Terms accepted
+            </p>
+          )}
         </div>
 
         {/* Form */}
