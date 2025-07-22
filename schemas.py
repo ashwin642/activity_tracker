@@ -1,7 +1,41 @@
-# schemas.py - Enhanced version with terms acceptance (CORRECTED)
+# schemas.py - Enhanced version with role-based access control
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, List
 from datetime import datetime
+from enum import Enum
+
+# Role and Permission Enums
+class UserRole(str, Enum):
+    admin = "admin"
+    subuser = "subuser"
+
+class Permission(str, Enum):
+    # Activity permissions
+    view_activities = "view_activities"
+    create_activities = "create_activities"
+    edit_activities = "edit_activities"
+    delete_activities = "delete_activities"
+    
+    # Goal permissions
+    view_goals = "view_goals"
+    create_goals = "create_goals"
+    edit_goals = "edit_goals"
+    delete_goals = "delete_goals"
+    
+    # User management permissions
+    view_users = "view_users"
+    create_users = "create_users"
+    edit_users = "edit_users"
+    delete_users = "delete_users"
+    
+    # Statistics permissions
+    view_stats = "view_stats"
+    view_all_stats = "view_all_stats"
+    
+    # Admin permissions
+    manage_roles = "manage_roles"
+    view_audit_logs = "view_audit_logs"
+    manage_system = "manage_system"
 
 # Terms and Conditions Schemas
 class TermsRequest(BaseModel):
@@ -33,10 +67,31 @@ class TermsAcceptanceResponse(BaseModel):
 class UserBase(BaseModel):
     username: str
     email: str
+    role: UserRole = UserRole.subuser
 
 class UserCreate(UserBase):
     password: str
-    # terms_token is passed in header, not body
+    permissions: Optional[List[Permission]] = None
+    created_by: Optional[int] = None  # ID of admin who created this user
+    
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return v
+    
+    @validator('username')
+    def validate_username(cls, v):
+        if len(v) < 3:
+            raise ValueError('Username must be at least 3 characters long')
+        return v
+
+class SubUserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     
     @validator('password')
     def validate_password(cls, v):
@@ -53,7 +108,6 @@ class UserCreate(UserBase):
 class UserLogin(BaseModel):
     username: str
     password: str
-    # terms_token is passed in header (X-Auth-Token), not in request body
     
     @validator('username')
     def validate_username(cls, v):
@@ -71,17 +125,16 @@ class UserUpdate(BaseModel):
     height: Optional[float] = None
     weight: Optional[float] = None
     activity_level: Optional[str] = None
+    is_active: Optional[bool] = None
+    permissions: Optional[List[Permission]] = None
 
-class UserPartialUpdate(BaseModel):
+class SubUserUpdate(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
-    height: Optional[float] = None
-    weight: Optional[float] = None
-    activity_level: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class UserOut(UserBase):
     id: int
@@ -97,13 +150,46 @@ class UserOut(UserBase):
     terms_version: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    created_by: Optional[int] = None
+    permissions: Optional[List[Permission]] = None
 
     class Config:
         orm_mode = True
 
+class SubUserOut(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: UserRole
+    is_active: bool
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[int] = None
+    permissions: Optional[List[Permission]] = None
+
+    class Config:
+        orm_mode = True
+
+# Permission Schemas
+class UserPermissionOut(BaseModel):
+    id: int
+    user_id: int
+    permission: Permission
+    granted_by: int
+    granted_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class PermissionAssignment(BaseModel):
+    user_id: int
+    permissions: List[Permission]
+
 # Activity Schemas
 class ActivityBase(BaseModel):
-    activity_name: str  # ← CHANGED FROM activity_type to activity_name
+    activity_name: str
     duration: int  # in minutes
     distance: Optional[float] = None  # in km
     calories_burned: Optional[int] = None
@@ -114,7 +200,7 @@ class ActivityCreate(ActivityBase):
     pass
 
 class ActivityUpdate(BaseModel):
-    activity_name: Optional[str] = None  # ← CHANGED FROM activity_type to activity_name
+    activity_name: Optional[str] = None
     duration: Optional[int] = None
     distance: Optional[float] = None
     calories_burned: Optional[int] = None
@@ -173,17 +259,19 @@ class UserStatsOut(BaseModel):
     class Config:
         orm_mode = True
 
-# Terms Acceptance Schema
-class TermsAcceptanceOut(BaseModel):
+# Audit Log Schema
+class AuditLogOut(BaseModel):
     id: int
-    user_id: Optional[int] = None
-    session_id: str
-    terms_version: str
+    user_id: int
+    action: str
+    resource_type: str
+    resource_id: Optional[int] = None
+    details: Optional[str] = None
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
-    accepted_at: datetime
-    email: Optional[str] = None
+    timestamp: datetime
     username: Optional[str] = None
+    user_role: Optional[UserRole] = None
 
     class Config:
         orm_mode = True
@@ -196,6 +284,17 @@ class DashboardData(BaseModel):
     user_stats: Optional[UserStatsOut] = None
     weekly_summary: dict
     monthly_summary: dict
+
+class AdminDashboardData(BaseModel):
+    user: UserOut
+    recent_activities: List[ActivityOut]
+    active_goals: List[GoalOut]
+    user_stats: Optional[UserStatsOut] = None
+    weekly_summary: dict
+    monthly_summary: dict
+    subuser_count: int
+    recent_subusers: List[SubUserOut]
+    system_stats: dict
 
 # Token Schemas
 class Token(BaseModel):

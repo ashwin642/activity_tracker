@@ -21,7 +21,72 @@ from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     security
 )
+from enum import Enum
+import json
+from typing import Dict, Any
+from pydantic import BaseModel
+from typing import Optional, List
+import enum
 
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+    role: str
+    
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Define user roles
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    SUBUSER = "subuser"
+
+# Define permissions
+class Permission(str, Enum):
+    READ_ACTIVITIES = "read_activities"
+    WRITE_ACTIVITIES = "write_activities"
+    DELETE_ACTIVITIES = "delete_activities"
+    READ_GOALS = "read_goals"
+    WRITE_GOALS = "write_goals"
+    DELETE_GOALS = "delete_goals"
+    READ_STATS = "read_stats"
+    MANAGE_PROFILE = "manage_profile"
+    MANAGE_SUBUSERS = "manage_subusers"
+    VIEW_AUDIT_LOGS = "view_audit_logs"
+
+ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
+    UserRole.ADMIN: [
+        Permission.READ_ACTIVITIES,
+        Permission.WRITE_ACTIVITIES, 
+        Permission.DELETE_ACTIVITIES,
+        Permission.READ_GOALS,
+        Permission.WRITE_GOALS,
+        Permission.DELETE_GOALS,
+        Permission.READ_STATS,
+        Permission.MANAGE_PROFILE,
+        Permission.MANAGE_SUBUSERS,
+        Permission.VIEW_AUDIT_LOGS
+    ],
+    UserRole.SUBUSER: [
+        Permission.READ_ACTIVITIES,
+        Permission.WRITE_ACTIVITIES, 
+        Permission.DELETE_ACTIVITIES,
+        Permission.READ_GOALS,
+        Permission.WRITE_GOALS,
+        Permission.DELETE_GOALS,
+        Permission.READ_STATS,
+        Permission.MANAGE_PROFILE
+    ]
+}
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
@@ -136,7 +201,47 @@ def get_db():
         yield db
     finally:
         db.close()
+def get_admin_user(current_user: models.User = Depends(get_current_active_user)):
+    """Dependency to ensure current user is an admin"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
 
+def get_role_permissions(role: UserRole) -> List[str]:
+    """Get the fixed permissions for a role"""
+    return [permission.value for permission in ROLE_PERMISSIONS[role]]
+
+def has_permission(user_role: UserRole, required_permission: Permission) -> bool:
+    """Check if a role has a specific permission"""
+    return required_permission in ROLE_PERMISSIONS[user_role]
+
+def permission_required(required_permissions: List[Permission]):
+    """Updated dependency factory for permission-based access control"""
+    def check_permission(current_user: models.User = Depends(get_current_active_user)):
+        user_role = UserRole(current_user.role)
+        
+        for permission in required_permissions:
+            if not has_permission(user_role, permission):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Permission denied. Required: {permission.value}"
+                )
+        return current_user
+    return check_permission
+
+def log_user_action(db: Session, user_id: int, action: str, details: str = None):
+    """Log user actions for audit trail"""
+    audit_log = models.AuditLog(
+        user_id=user_id,
+        action=action,
+        details=details,
+        timestamp=datetime.now()
+    )
+    db.add(audit_log)
+    db.commit()
 def calculate_user_stats(user_id: int, db: Session):
     """Calculate and update user statistics"""
     activities = db.query(models.Activity).filter(models.Activity.user_id == user_id).all()
@@ -264,14 +369,13 @@ def check_terms_status(auth_token: str = Depends(get_auth_token_from_header)):
         "message": "Terms and conditions have been accepted"
     }
 
-# Authentication Endpoints (now require auth token)
 @app.post("/login", response_model=schemas.Token)
 def authenticate_user(
     user: schemas.UserLogin, 
     db: Session = Depends(get_db),
     auth_token: str = Depends(get_auth_token_from_header)
 ):
-    """Login endpoint - Requires auth token from terms agreement"""
+    """Login endpoint - Returns JWT with fixed role permissions"""
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if not db_user:
         raise HTTPException(
@@ -292,72 +396,93 @@ def authenticate_user(
         )
     
     # Invalidate the auth token after successful login
-    if auth_token in auth_tokens:
-        auth_tokens[auth_token]["valid"] = False
+    #if auth_token in auth_tokens:
+        #auth_tokens[auth_token]["valid"] = False
+    
+    # Get fixed permissions for user's role
+    user_role = UserRole(db_user.role)
+    fixed_permissions = get_role_permissions(user_role)
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": db_user.username}, 
+        data={
+            "sub": db_user.username,
+            "role": db_user.role,
+            "permissions": fixed_permissions  # Use fixed permissions
+        }, 
         expires_delta=access_token_expires
     )
     refresh_token = create_refresh_token(data={"sub": db_user.username})
     
+    # Log login action
+    log_user_action(db, db_user.id, "LOGIN", f"User logged in with role: {db_user.role}")
+    
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "user": db_user
+        "user": db_user,
+        "permissions": fixed_permissions
     }
 
-@app.post("/register", response_model=schemas.Token)
-def register_user(
-    user: schemas.UserCreate, 
-    db: Session = Depends(get_db),
-    auth_token: str = Depends(get_auth_token_from_header)
-):
-    """Register endpoint - Requires auth token from terms agreement"""
-    db_user = db.query(models.User).filter(
-        (models.User.username == user.username) | (models.User.email == user.email)
-    ).first()
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already registered"
+@app.post("/register")
+async def register_user(user_data: UserCreate, db: Session = Depends(get_db), auth_token: str = Depends(get_auth_token_from_header)):
+    try:
+        # Check if user already exists
+        existing_user = db.query(models.User).filter(
+            (models.User.username == user_data.username) | 
+            (models.User.email == user_data.email)
+        ).first()
+        
+        if existing_user:
+            raise HTTPException(
+                status_code=400, 
+                detail="Username or email already registered"
+            )
+        
+        # Validate role
+        try:
+            role = UserRole(user_data.role)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid role. Must be one of: {[r.value for r in UserRole]}"
+            )
+        
+        # Hash the password
+        hashed_password = get_password_hash(user_data.password)
+        
+        # Create new user with fixed role permissions
+        new_user = models.User(
+            username=user_data.username,
+            email=user_data.email,
+            hashed_password=hashed_password,
+            role=role,
+            is_active=True,
+            terms_accepted=True,
+            terms_accepted_at=datetime.utcnow(),
         )
-
-    hashed_password = get_password_hash(user.password)
-    new_user = models.User(
-        username=user.username,
-        email=user.email,
-        hashed_password=hashed_password
-    )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    # Create initial user stats
-    user_stats = models.UserStats(user_id=new_user.id)
-    db.add(user_stats)
-    db.commit()
-    
-    # Invalidate the auth token after successful registration
-    if auth_token in auth_tokens:
-        auth_tokens[auth_token]["valid"] = False
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": new_user.username}, 
-        expires_delta=access_token_expires
-    )
-    refresh_token = create_refresh_token(data={"sub": new_user.username})
-    
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "user": new_user
-    }
+        
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        # Get the fixed permissions for this role
+        role_permissions = get_role_permissions(role)
+        
+        return {
+            "message": "User registered successfully",
+            "user_id": new_user.id,
+            "username": new_user.username,
+            "role": new_user.role.value,
+            "permissions": role_permissions  # Show what permissions they have
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.post("/auth/logout")
 def logout_user(current_user: models.User = Depends(get_current_active_user)):
@@ -366,8 +491,14 @@ def logout_user(current_user: models.User = Depends(get_current_active_user)):
 
 @app.get("/auth/me", response_model=schemas.UserOut)
 def get_current_user_info(current_user: models.User = Depends(get_current_active_user)):
-    """Get current user information - Requires JWT authentication"""
-    return current_user
+    """Get current user information with their fixed role permissions"""
+    user_role = UserRole(current_user.role)
+    user_permissions = get_role_permissions(user_role)
+    
+    return {
+        **current_user.__dict__,
+        "permissions": user_permissions  # Show current fixed permissions
+    }
 
 @app.get("/auth/verify-token")
 def verify_user_token(current_user: models.User = Depends(get_current_active_user)):
@@ -717,3 +848,208 @@ async def cleanup_expired_tokens():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+
+@app.post("/subusers", response_model=schemas.UserOut)
+def create_subuser(
+    user_data: schemas.SubUserCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Create a new sub-user (Admin only) - Subusers get fixed permissions"""
+    # Check if username/email already exists
+    existing_user = db.query(models.User).filter(
+        (models.User.username == user_data.username) | 
+        (models.User.email == user_data.email)
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username or email already exists"
+        )
+    
+    hashed_password = get_password_hash(user_data.password)
+    
+    # Create subuser with fixed SUBUSER role and permissions
+    new_subuser = models.User(
+        username=user_data.username,
+        email=user_data.email,
+        hashed_password=hashed_password,
+        role=UserRole.SUBUSER,  # Always SUBUSER role
+        created_by=current_user.id
+    )
+    
+    db.add(new_subuser)
+    db.commit()
+    db.refresh(new_subuser)
+    
+    # Create initial user stats
+    user_stats = models.UserStats(user_id=new_subuser.id)
+    db.add(user_stats)
+    db.commit()
+    
+    # Log action
+    subuser_permissions = get_role_permissions(UserRole.SUBUSER)
+    log_user_action(
+        db, 
+        current_user.id, 
+        "CREATE_SUBUSER", 
+        f"Created sub-user: {new_subuser.username} with fixed permissions: {subuser_permissions}"
+    )
+    
+    return new_subuser
+
+@app.get("/subusers", response_model=List[schemas.UserOut])
+def get_subusers(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Get all sub-users (Admin only)"""
+    subusers = db.query(models.User).filter(
+        models.User.role == UserRole.SUBUSER
+    ).offset(skip).limit(limit).all()
+    
+    return subusers
+
+@app.get("/subusers/{user_id}", response_model=schemas.UserOut)
+def get_subuser(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Get specific sub-user (Admin only)"""
+    subuser = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == UserRole.SUBUSER
+    ).first()
+    
+    if not subuser:
+        raise HTTPException(status_code=404, detail="Sub-user not found")
+    
+    return subuser
+
+@app.put("/subusers/{user_id}", response_model=schemas.UserOut)
+def update_subuser(
+    user_id: int,
+    user_update: schemas.SubUserUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Update sub-user (Admin only)"""
+    subuser = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == UserRole.SUBUSER
+    ).first()
+    
+    if not subuser:
+        raise HTTPException(status_code=404, detail="Sub-user not found")
+    
+    update_data = user_update.dict(exclude_unset=True)
+    
+    # Check for username/email conflicts
+    if "username" in update_data:
+        existing = db.query(models.User).filter(
+            models.User.username == update_data["username"],
+            models.User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Username already taken")
+    
+    if "email" in update_data:
+        existing = db.query(models.User).filter(
+            models.User.email == update_data["email"],
+            models.User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already taken")
+    
+    # Update fields
+    for field, value in update_data.items():
+        if field == "password":
+            setattr(subuser, "hashed_password", get_password_hash(value))
+        elif field == "permissions":
+            setattr(subuser, "permissions", json.dumps(value))
+        else:
+            setattr(subuser, field, value)
+    
+    db.commit()
+    db.refresh(subuser)
+    
+    # Log action
+    log_user_action(db, current_user.id, "UPDATE_SUBUSER", f"Updated sub-user: {subuser.username}")
+    
+    return subuser
+
+@app.delete("/subusers/{user_id}")
+def delete_subuser(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Delete sub-user (Admin only)"""
+    subuser = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == UserRole.SUBUSER
+    ).first()
+    
+    if not subuser:
+        raise HTTPException(status_code=404, detail="Sub-user not found")
+    
+    username = subuser.username
+    
+    # Delete related data (activities, goals, stats)
+    db.query(models.Activity).filter(models.Activity.user_id == user_id).delete()
+    db.query(models.Goal).filter(models.Goal.user_id == user_id).delete()
+    db.query(models.UserStats).filter(models.UserStats.user_id == user_id).delete()
+    
+    # Delete user
+    db.delete(subuser)
+    db.commit()
+    
+    # Log action
+    log_user_action(db, current_user.id, "DELETE_SUBUSER", f"Deleted sub-user: {username}")
+    
+    return {"message": f"Sub-user {username} deleted successfully"}
+
+# Updated permissions endpoint - now shows fixed permissions per role
+@app.get("/permissions")
+def get_role_permissions_info(
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Get fixed permissions for each role (Admin only)"""
+    return {
+        "message": "Permissions are fixed per role and cannot be modified",
+        "role_permissions": {
+            UserRole.ADMIN.value: get_role_permissions(UserRole.ADMIN),
+            UserRole.SUBUSER.value: get_role_permissions(UserRole.SUBUSER)
+        },
+        "note": "These permissions are hardcoded and cannot be changed"
+    }
+
+@app.get("/audit-logs", response_model=List[schemas.AuditLogOut])
+def get_audit_logs(
+    skip: int = 0,
+    limit: int = 100,
+    user_id: Optional[int] = None,
+    action: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Get audit logs (Admin only)"""
+    query = db.query(models.AuditLog)
+    
+    if user_id:
+        query = query.filter(models.AuditLog.user_id == user_id)
+    if action:
+        query = query.filter(models.AuditLog.action == action)
+    if start_date:
+        query = query.filter(models.AuditLog.timestamp >= start_date)
+    if end_date:
+        query = query.filter(models.AuditLog.timestamp <= end_date)
+    
+    logs = query.order_by(desc(models.AuditLog.timestamp)).offset(skip).limit(limit).all()
+    return logs
