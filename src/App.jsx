@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LoginRegister from './components/LoginRegister';
 import Dashboard from './components/Dashboard';
+import AdminDashboard from './components/AdminDashboard';
 import TermsAndConditions from './components/TermsAndConditions';
 import './App.css';
 
@@ -9,6 +10,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
   const [authToken, setAuthToken] = useState(null);
+  const [userRole, setUserRole] = useState(null);
 
   useEffect(() => {
     // Don't check for previously accepted terms - always require acceptance
@@ -17,7 +19,16 @@ function App() {
     const user = localStorage.getItem('user');
     
     if (token && user) {
-      setIsLoggedIn(true);
+      try {
+        const userData = JSON.parse(user);
+        setIsLoggedIn(true);
+        setUserRole(userData.role);
+        setHasAcceptedTerms(true); // If they're already logged in, assume terms were accepted
+      } catch (error) {
+        // If user data is corrupted, clear it
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
     }
     
     setIsLoading(false);
@@ -29,14 +40,18 @@ function App() {
     // Don't save to localStorage anymore - let it be session-only
   };
 
-  const handleLogin = () => {
+  const handleLogin = (userData) => {
     setIsLoggedIn(true);
+    if (userData && userData.role) {
+      setUserRole(userData.role);
+    }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setIsLoggedIn(false);
+    setUserRole(null);
     // Reset terms acceptance on logout so it's required again
     setHasAcceptedTerms(false);
     setAuthToken(null);
@@ -60,7 +75,11 @@ function App() {
   return (
     <div className="App">
       {isLoggedIn ? (
-        <Dashboard onLogout={handleLogout} />
+        userRole === 'admin' ? (
+          <AdminDashboard onLogout={handleLogout} />
+        ) : (
+          <Dashboard onLogout={handleLogout} />
+        )
       ) : (
         <LoginRegister onLogin={handleLogin} authToken={authToken} />
       )}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Mail, Lock, Activity, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
-const LoginRegister = ({ onLogin, authToken }) => {
+const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
@@ -104,7 +104,7 @@ const LoginRegister = ({ onLogin, authToken }) => {
       const endpoint = isLogin ? '/login' : '/register';
       const payload = isLogin 
         ? { username: formData.username, password: formData.password }
-        : { username: formData.username, email: formData.email, password: formData.password };
+        : { username: formData.username, email: formData.email, password: formData.password, role: 'subuser' };
 
       // Create headers object with auth token
       const headers = {
@@ -125,28 +125,50 @@ const LoginRegister = ({ onLogin, authToken }) => {
       if (response.ok) {
         const data = await response.json();
         
+        // Debug logging to see what we actually received
+        console.log('Response data:', data);
+        
         if (isLogin) {
-          setMessage(`Welcome back, ${data.user.username}!`);
+          // Safe access to user data with fallbacks
+          const username = data?.user?.username || data?.username || formData.username;
+          const userRole = data?.user?.role || data?.role || 'subuser';
+          
+          setMessage(`Welcome back, ${username}!`);
           
           // Store tokens properly (consistent with Dashboard)
-          saveTokens(data.access_token, data.refresh_token);
+          if (data.access_token) {
+            saveTokens(data.access_token, data.refresh_token);
+          }
           
-          // Store user data
-          localStorage.setItem('user', JSON.stringify(data.user));
+          // Store user data if available
+          if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+          }
           
           // Debug logging
           console.log('Login successful:', {
             access_token: data.access_token ? 'present' : 'missing',
             refresh_token: data.refresh_token ? 'present' : 'missing',
-            user: data.user
+            user: data.user || 'missing',
+            role: userRole
           });
           
-          // Call the onLogin callback to navigate to dashboard
-          if (onLogin) {
-            onLogin();
+          // Route based on user role
+          if (userRole === 'admin') {
+            // Call the onAdminLogin callback to navigate to admin dashboard
+            if (onAdminLogin) {
+              onAdminLogin();
+            }
+          } else {
+            // Call the onLogin callback to navigate to regular dashboard
+            if (onLogin) {
+              onLogin();
+            }
           }
         } else {
-          setMessage(`Welcome ${data.user.username}! Registration successful. Please sign in.`);
+          // Safe access to user data for registration
+          const username = data?.user?.username || data?.username || formData.username;
+          setMessage(`Welcome ${username}! Registration successful. Please sign in.`);
           
           // Clear form on successful registration
           setFormData({
