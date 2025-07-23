@@ -129,10 +129,36 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
         console.log('Response data:', data);
         
         if (isLogin) {
-          // Safe access to user data with fallbacks
-          const username = data?.user?.username || data?.username || formData.username;
-          const userRole = data?.user?.role || data?.role || 'subuser';
+          // Enhanced role detection with multiple fallbacks
+          let userRole = null;
+          let username = null;
+
+          // Try multiple ways to get the role
+          if (data.user && data.user.role) {
+            userRole = data.user.role;
+            username = data.user.username;
+          } else if (data.role) {
+            userRole = data.role;
+            username = data.username || data.user?.username || formData.username;
+          } else if (data.user_role) {
+            userRole = data.user_role;
+            username = data.user?.username || data.username || formData.username;
+          } else {
+            // Default to subuser if no role is found
+            userRole = 'subuser';
+            username = data.user?.username || data.username || formData.username;
+          }
+
+          // Normalize role string (trim whitespace, lowercase for comparison)
+          const normalizedRole = userRole ? userRole.toString().trim().toLowerCase() : 'subuser';
           
+          console.log('Role detection:', {
+            originalRole: userRole,
+            normalizedRole: normalizedRole,
+            username: username,
+            fullResponse: data
+          });
+
           setMessage(`Welcome back, ${username}!`);
           
           // Store tokens properly (consistent with Dashboard)
@@ -140,29 +166,42 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
             saveTokens(data.access_token, data.refresh_token);
           }
           
-          // Store user data if available
-          if (data.user) {
-            localStorage.setItem('user', JSON.stringify(data.user));
-          }
+          // Store user data with normalized role
+          const userData = {
+            username: username,
+            role: normalizedRole,
+            email: data.user?.email || data.email,
+            ...data.user
+          };
+          localStorage.setItem('user', JSON.stringify(userData));
           
           // Debug logging
           console.log('Login successful:', {
             access_token: data.access_token ? 'present' : 'missing',
             refresh_token: data.refresh_token ? 'present' : 'missing',
-            user: data.user || 'missing',
-            role: userRole
+            user: userData,
+            role: normalizedRole,
+            isAdmin: normalizedRole === 'admin'
           });
           
-          // Route based on user role
-          if (userRole === 'admin') {
+          // Route based on user role - check for admin first
+          if (normalizedRole === 'admin') {
+            console.log('Routing to admin dashboard');
             // Call the onAdminLogin callback to navigate to admin dashboard
-            if (onAdminLogin) {
+            if (onAdminLogin && typeof onAdminLogin === 'function') {
               onAdminLogin();
+            } else {
+              console.error('onAdminLogin callback is not available or not a function');
+              setMessage('Admin login successful, but navigation failed. Please check console.');
             }
           } else {
+            console.log('Routing to regular dashboard');
             // Call the onLogin callback to navigate to regular dashboard
-            if (onLogin) {
+            if (onLogin && typeof onLogin === 'function') {
               onLogin();
+            } else {
+              console.error('onLogin callback is not available or not a function');
+              setMessage('Login successful, but navigation failed. Please check console.');
             }
           }
         } else {
