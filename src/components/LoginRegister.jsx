@@ -170,6 +170,7 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
           const userData = {
             username: username,
             role: normalizedRole,
+            is_admin: normalizedRole === 'admin',
             email: data.user?.email || data.email,
             ...data.user
           };
