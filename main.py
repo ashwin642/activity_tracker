@@ -601,25 +601,202 @@ def get_dashboard(
     }
 
 # Activity Endpoints
+def get_or_create_user_stats(user_id: int, db: Session):
+    """Get or create user stats record with proper error handling"""
+    try:
+        user_stats = db.query(models.UserStats).filter(models.UserStats.user_id == user_id).first()
+    except ValueError as e:
+        # Handle date parsing errors by recreating the stats record
+        if "Invalid isoformat string" in str(e):
+            # Delete the corrupted stats record
+            db.query(models.UserStats).filter(models.UserStats.user_id == user_id).delete(synchronize_session=False)
+            db.commit()
+            user_stats = None
+        else:
+            raise e
+    
+    if not user_stats:
+        # Create new stats record
+        user_stats = models.UserStats(user_id=user_id)
+        db.add(user_stats)
+        db.commit()
+        db.refresh(user_stats)
+    
+    # Update stats with proper error handling
+    try:
+        stats_data = calculate_user_stats(user_id, db)
+        for key, value in stats_data.items():
+            # Handle date fields properly
+            if key == "last_activity_date" and value is not None:
+                # Ensure it's a proper date object
+                if isinstance(value, str):
+                    try:
+                        value = datetime.strptime(value.split()[0], "%Y-%m-%d").date()
+                    except (ValueError, IndexError):
+                        value = None
+            setattr(user_stats, key, value)
+        
+        db.commit()
+        db.refresh(user_stats)
+    except Exception as e:
+        db.rollback()
+        # If there's still an error, return basic stats
+        user_stats = models.UserStats(
+            user_id=user_id,
+            total_activities=0,
+            total_distance=0.0,
+            total_calories=0,
+            total_duration=0,
+            avg_calories_per_day=0.0,
+            current_streak=0,
+            longest_streak=0,
+            last_activity_date=None
+        )
+        db.add(user_stats)
+        db.commit()
+        db.refresh(user_stats)
+    
+    return user_stats
+
+def calculate_user_stats(user_id: int, db: Session):
+    """Calculate and update user statistics with proper date handling"""
+    try:
+        activities = db.query(models.Activity).filter(models.Activity.user_id == user_id).all()
+    except Exception as e:
+        # If there's an error querying activities, return empty stats
+        return {
+            "total_activities": 0,
+            "total_distance": 0.0,
+            "total_calories": 0,
+            "total_duration": 0,
+            "avg_calories_per_day": 0.0,
+            "current_streak": 0,
+            "longest_streak": 0,
+            "last_activity_date": None
+        }
+    
+    if not activities:
+        return {
+            "total_activities": 0,
+            "total_distance": 0.0,
+            "total_calories": 0,
+            "total_duration": 0,
+            "avg_calories_per_day": 0.0,
+            "current_streak": 0,
+            "longest_streak": 0,
+            "last_activity_date": None
+        }
+    
+    total_activities = len(activities)
+    total_distance = sum(a.distance or 0 for a in activities)
+    total_calories = sum(a.calories_burned or 0 for a in activities)
+    total_duration = sum(a.duration or 0 for a in activities)
+    
+    # Calculate average calories per day
+    if activities:
+        first_activity = min(activities, key=lambda x: x.date)
+        # Handle date properly
+        if hasattr(first_activity.date, 'date'):
+            first_date = first_activity.date.date()
+        else:
+            first_date = first_activity.date
+        
+        days_active = (date.today() - first_date).days + 1
+        avg_calories_per_day = total_calories / days_active if days_active > 0 else 0
+    else:
+        avg_calories_per_day = 0
+    
+    # Calculate streaks (simplified - consecutive days with activities)
+    try:
+        activity_dates = []
+        for a in activities:
+            if hasattr(a.date, 'date'):
+                activity_dates.append(a.date.date())
+            else:
+                activity_dates.append(a.date)
+        
+        activity_dates = sorted(set(activity_dates))
+    except Exception:
+        activity_dates = []
+    
+    current_streak = 0
+    longest_streak = 0
+    temp_streak = 1
+    
+    if activity_dates:
+        for i in range(len(activity_dates) - 1):
+            if (activity_dates[i + 1] - activity_dates[i]).days == 1:
+                temp_streak += 1
+            else:
+                longest_streak = max(longest_streak, temp_streak)
+                temp_streak = 1
+        longest_streak = max(longest_streak, temp_streak)
+        
+        # Current streak (from today backwards)
+        today = date.today()
+        if activity_dates and activity_dates[-1] == today:
+            current_streak = 1
+            for i in range(len(activity_dates) - 2, -1, -1):
+                if (activity_dates[i + 1] - activity_dates[i]).days == 1:
+                    current_streak += 1
+                else:
+                    break
+    
+    # Handle last activity date properly
+    last_activity_date = None
+    if activities:
+        try:
+            last_activity = max(activities, key=lambda x: x.date)
+            if hasattr(last_activity.date, 'date'):
+                last_activity_date = last_activity.date.date()
+            else:
+                last_activity_date = last_activity.date
+        except Exception:
+            last_activity_date = None
+    
+    return {
+        "total_activities": total_activities,
+        "total_distance": total_distance,
+        "total_calories": total_calories,
+        "total_duration": total_duration,
+        "avg_calories_per_day": avg_calories_per_day,
+        "current_streak": current_streak,
+        "longest_streak": longest_streak,
+        "last_activity_date": last_activity_date
+    }
+
 @app.post("/activities", response_model=schemas.ActivityOut)
 def create_activity(
     activity: schemas.ActivityCreate,
     current_user: models.User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new activity"""
-    db_activity = models.Activity(
-        user_id=current_user.id,
-        **activity.dict()
-    )
-    db.add(db_activity)
-    db.commit()
-    db.refresh(db_activity)
-    
-    # Update user stats
-    get_or_create_user_stats(current_user.id, db)
-    
-    return db_activity
+    """Create a new activity with proper error handling"""
+    try:
+        # Create the activity
+        db_activity = models.Activity(
+            user_id=current_user.id,
+            **activity.dict()
+        )
+        db.add(db_activity)
+        db.commit()
+        db.refresh(db_activity)
+        
+        # Update user stats with error handling
+        try:
+            get_or_create_user_stats(current_user.id, db)
+        except Exception as stats_error:
+            # Log the error but don't fail the activity creation
+            print(f"Warning: Failed to update user stats: {stats_error}")
+        
+        return db_activity
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create activity: {str(e)}"
+        )
 
 @app.get("/activities", response_model=List[schemas.ActivityOut])
 def get_activities(
@@ -999,17 +1176,35 @@ def delete_subuser(
     
     username = subuser.username
     
-    # Delete related data (activities, goals, stats)
-    db.query(models.Activity).filter(models.Activity.user_id == user_id).delete()
-    db.query(models.Goal).filter(models.Goal.user_id == user_id).delete()
-    db.query(models.UserStats).filter(models.UserStats.user_id == user_id).delete()
-    
-    # Delete user
-    db.delete(subuser)
-    db.commit()
-    
-    # Log action
-    log_user_action(db, current_user.id, "DELETE_SUBUSER", f"Deleted sub-user: {username}")
+    try:
+        # Log action BEFORE deleting (while user still exists)
+        log_user_action(db, current_user.id, "DELETE_SUBUSER", f"Deleted sub-user: {username}")
+        
+        # Delete audit logs for this user first (or update them to reference the admin)
+        # Option 1: Delete audit logs for this user
+        db.query(models.AuditLog).filter(models.AuditLog.user_id == user_id).delete(synchronize_session=False)
+        
+        # Option 2: Alternative - Update audit logs to reference the admin who deleted the user
+        # db.query(models.AuditLog).filter(models.AuditLog.user_id == user_id).update(
+        #     {"user_id": current_user.id, "details": f"[User deleted] Original user_id: {user_id}. " + models.AuditLog.details},
+        #     synchronize_session=False
+        # )
+        
+        # Delete related data (activities, goals, stats)
+        db.query(models.Activity).filter(models.Activity.user_id == user_id).delete(synchronize_session=False)
+        db.query(models.Goal).filter(models.Goal.user_id == user_id).delete(synchronize_session=False)
+        db.query(models.UserStats).filter(models.UserStats.user_id == user_id).delete(synchronize_session=False)
+        
+        # Delete user
+        db.delete(subuser)
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete sub-user: {str(e)}"
+        )
     
     return {"message": f"Sub-user {username} deleted successfully"}
 
