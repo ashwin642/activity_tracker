@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 import enum
 
-# Role and Permission Enums
+# Role and Permission Enum
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     exercise_tracker = "exercise_tracker"
