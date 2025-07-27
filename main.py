@@ -249,7 +249,7 @@ def calculate_user_stats(user_id: int, db: Session):
     if not activities:
         return {
             "total_activities": 0,
-            "total_distance": 0.0,
+           # "total_distance": 0.0,
             "total_calories": 0,
             "total_duration": 0,
             "avg_calories_per_day": 0.0,
@@ -259,7 +259,7 @@ def calculate_user_stats(user_id: int, db: Session):
         }
     
     total_activities = len(activities)
-    total_distance = sum(a.distance or 0 for a in activities)
+    #total_distance = sum(a.distance or 0 for a in activities)
     total_calories = sum(a.calories_burned or 0 for a in activities)
     total_duration = sum(a.duration or 0 for a in activities)
     
@@ -300,7 +300,7 @@ def calculate_user_stats(user_id: int, db: Session):
     
     return {
         "total_activities": total_activities,
-        "total_distance": total_distance,
+        #"total_distance": total_distance,
         "total_calories": total_calories,
         "total_duration": total_duration,
         "avg_calories_per_day": avg_calories_per_day,
@@ -570,7 +570,7 @@ def get_dashboard(
     
     weekly_summary = {
         "activities_count": len(weekly_activities),
-        "total_distance": sum(a.distance or 0 for a in weekly_activities),
+        #"total_distance": sum(a.distance or 0 for a in weekly_activities),
         "total_calories": sum(a.calories_burned or 0 for a in weekly_activities),
         "total_duration": sum(a.duration or 0 for a in weekly_activities),
         "activity_types": list(set(a.activity_type for a in weekly_activities))
@@ -585,7 +585,7 @@ def get_dashboard(
     
     monthly_summary = {
         "activities_count": len(monthly_activities),
-        "total_distance": sum(a.distance or 0 for a in monthly_activities),
+        #"total_distance": sum(a.distance or 0 for a in monthly_activities),
         "total_calories": sum(a.calories_burned or 0 for a in monthly_activities),
         "total_duration": sum(a.duration or 0 for a in monthly_activities),
         "activity_types": list(set(a.activity_type for a in monthly_activities))
@@ -644,7 +644,7 @@ def get_or_create_user_stats(user_id: int, db: Session):
         user_stats = models.UserStats(
             user_id=user_id,
             total_activities=0,
-            total_distance=0.0,
+            #total_distance=0.0,
             total_calories=0,
             total_duration=0,
             avg_calories_per_day=0.0,
@@ -666,7 +666,7 @@ def calculate_user_stats(user_id: int, db: Session):
         # If there's an error querying activities, return empty stats
         return {
             "total_activities": 0,
-            "total_distance": 0.0,
+            #"total_distance": 0.0,
             "total_calories": 0,
             "total_duration": 0,
             "avg_calories_per_day": 0.0,
@@ -678,7 +678,7 @@ def calculate_user_stats(user_id: int, db: Session):
     if not activities:
         return {
             "total_activities": 0,
-            "total_distance": 0.0,
+            #"total_distance": 0.0,
             "total_calories": 0,
             "total_duration": 0,
             "avg_calories_per_day": 0.0,
@@ -688,7 +688,7 @@ def calculate_user_stats(user_id: int, db: Session):
         }
     
     total_activities = len(activities)
-    total_distance = sum(a.distance or 0 for a in activities)
+    #total_distance = sum(a.distance or 0 for a in activities)
     total_calories = sum(a.calories_burned or 0 for a in activities)
     total_duration = sum(a.duration or 0 for a in activities)
     
@@ -756,7 +756,7 @@ def calculate_user_stats(user_id: int, db: Session):
     
     return {
         "total_activities": total_activities,
-        "total_distance": total_distance,
+        #"total_distance": total_distance,
         "total_calories": total_calories,
         "total_duration": total_duration,
         "avg_calories_per_day": avg_calories_per_day,

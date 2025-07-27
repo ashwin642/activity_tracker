@@ -10,7 +10,6 @@ import {
   Trash2,
   BarChart3,
   Search,
-  MapPin,
   Zap
 } from 'lucide-react';
 
@@ -25,7 +24,6 @@ const Dashboard = ({ onLogout }) => {
   const [newActivity, setNewActivity] = useState({
     activity_name: '',
     duration: '',
-    distance: '',
     calories_burned: '',
     notes: '',
     date: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM format
@@ -33,7 +31,6 @@ const Dashboard = ({ onLogout }) => {
   const [stats, setStats] = useState({
     totalActivities: 0,
     totalDuration: 0,
-    totalDistance: 0,
     totalCalories: 0,
     avgDuration: 0,
     streak: 0
@@ -188,13 +185,11 @@ const Dashboard = ({ onLogout }) => {
   // Calculate statistics
   const calculateStats = (activitiesData) => {
     const totalDuration = activitiesData.reduce((sum, a) => sum + (a.duration || 0), 0);
-    const totalDistance = activitiesData.reduce((sum, a) => sum + (a.distance || 0), 0);
     const totalCalories = activitiesData.reduce((sum, a) => sum + (a.calories_burned || 0), 0);
     
     setStats({
       totalActivities: activitiesData.length,
       totalDuration,
-      totalDistance,
       totalCalories,
       avgDuration: activitiesData.length > 0 ? Math.round(totalDuration / activitiesData.length) : 0,
       streak: calculateStreak(activitiesData)
@@ -254,7 +249,6 @@ const Dashboard = ({ onLogout }) => {
       const activityData = {
         activity_name: newActivity.activity_name,
         duration: parseInt(newActivity.duration) || 0,
-        distance: newActivity.distance ? parseFloat(newActivity.distance) : null,
         calories_burned: newActivity.calories_burned ? parseInt(newActivity.calories_burned) : null,
         notes: newActivity.notes || null,
         date: new Date(newActivity.date).toISOString()
@@ -278,7 +272,6 @@ const Dashboard = ({ onLogout }) => {
         setNewActivity({
           activity_name: '',
           duration: '',
-          distance: '',
           calories_burned: '',
           notes: '',
           date: new Date().toISOString().slice(0, 16)
@@ -398,7 +391,7 @@ const Dashboard = ({ onLogout }) => {
         )}
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
@@ -419,18 +412,6 @@ const Dashboard = ({ onLogout }) => {
               <div className="ml-4">
                 <p className="text-sm text-gray-600">Total Time</p>
                 <p className="text-2xl font-semibold text-gray-900">{stats.totalDuration}m</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <MapPin className="w-6 h-6 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm text-gray-600">Total Distance</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.totalDistance.toFixed(1)}km</p>
               </div>
             </div>
           </div>
@@ -528,12 +509,6 @@ const Dashboard = ({ onLogout }) => {
                             <Clock className="w-4 h-4 mr-1" />
                             {activity.duration} min
                           </div>
-                          {activity.distance && (
-                            <div className="flex items-center">
-                              <MapPin className="w-4 h-4 mr-1" />
-                              {activity.distance} km
-                            </div>
-                          )}
                           {activity.calories_burned && (
                             <div className="flex items-center">
                               <Zap className="w-4 h-4 mr-1" />
@@ -598,20 +573,6 @@ const Dashboard = ({ onLogout }) => {
                   min="1"
                   placeholder="30"
                   required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Distance (km)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={newActivity.distance}
-                  onChange={(e) => setNewActivity({...newActivity, distance: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="5.0"
                 />
               </div>
               

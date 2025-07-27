@@ -191,7 +191,7 @@ class PermissionAssignment(BaseModel):
 class ActivityBase(BaseModel):
     activity_name: str
     duration: int  # in minutes
-    distance: Optional[float] = None  # in km
+    #distance: Optional[float] = None  # in km
     calories_burned: Optional[int] = None
     notes: Optional[str] = None
     date: datetime
@@ -202,7 +202,7 @@ class ActivityCreate(ActivityBase):
 class ActivityUpdate(BaseModel):
     activity_name: Optional[str] = None
     duration: Optional[int] = None
-    distance: Optional[float] = None
+    #distance: Optional[float] = None
     calories_burned: Optional[int] = None
     notes: Optional[str] = None
     date: Optional[datetime] = None
@@ -247,7 +247,7 @@ class UserStatsOut(BaseModel):
     id: int
     user_id: int
     total_activities: int
-    total_distance: float
+    #total_distance: float
     total_calories: int
     total_duration: int
     avg_calories_per_day: float

@@ -89,7 +89,7 @@ class Activity(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     activity_name = Column(String(100), nullable=False)
     duration = Column(Integer, nullable=False)  # in minutes
-    distance = Column(Float)  # in km
+    #distance = Column(Float)  # in km
     calories_burned = Column(Integer)
     notes = Column(Text)
     date = Column(DateTime, nullable=False)
@@ -119,7 +119,7 @@ class UserStats(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     total_activities = Column(Integer, default=0)
-    total_distance = Column(Float, default=0.0)
+    #total_distance = Column(Float, default=0.0)
     total_calories = Column(Integer, default=0)
     total_duration = Column(Integer, default=0)
     avg_calories_per_day = Column(Float, default=0.0)
