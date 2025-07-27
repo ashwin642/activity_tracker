@@ -3,11 +3,13 @@ from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+import enum
 
 # Role and Permission Enums
-class UserRole(str, Enum):
-    admin = "admin"
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
     exercise_tracker = "exercise_tracker"
+    wellness_tracker = "wellness_tracker"
 
 class Permission(str, Enum):
     # Activity permissions
@@ -322,3 +324,49 @@ class PasswordResetConfirm(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     code: Optional[str] = None
+
+# Wellness Tracker schemas
+class WellnessTrackerCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class WellnessTrackerUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+
+# Wellness-specific activity schemas
+class NutritionCreate(BaseModel):
+    meal_type: str  # breakfast, lunch, dinner, snack
+    food_items: str
+    calories: Optional[int] = None
+    protein: Optional[float] = None
+    carbs: Optional[float] = None
+    fat: Optional[float] = None
+    notes: Optional[str] = None
+
+class SleepCreate(BaseModel):
+    bedtime: datetime
+    wake_time: datetime
+    sleep_quality: int  # 1-10 scale
+    sleep_duration: Optional[int] = None  # in minutes
+    notes: Optional[str] = None
+
+class MoodCreate(BaseModel):
+    mood_rating: int  # 1-10 scale
+    mood_type: str  # happy, sad, anxious, calm, etc.
+    energy_level: Optional[int] = None  # 1-10 scale
+    stress_level: Optional[int] = None  # 1-10 scale
+    notes: Optional[str] = None
+
+class MeditationCreate(BaseModel):
+    duration: int  # in minutes
+    meditation_type: str  # mindfulness, breathing, guided, etc.
+    notes: Optional[str] = None
+
+class HydrationCreate(BaseModel):
+    water_intake: float  # in liters or cups
+    time_logged: datetime
+    notes: Optional[str] = None

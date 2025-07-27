@@ -49,6 +49,7 @@ class UserResponse(BaseModel):
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     exercise_tracker = "exercise_tracker"
+    wellness_tracker = "wellness_tracker"
 
 # Define permissions
 class Permission(str, Enum):
@@ -62,6 +63,12 @@ class Permission(str, Enum):
     MANAGE_PROFILE = "manage_profile"
     MANAGE_exercise_trackers = "manage_exercise_trackers"
     VIEW_AUDIT_LOGS = "view_audit_logs"
+    MANAGE_wellness_trackers = "manage_wellness_trackers"
+    TRACK_NUTRITION = "track_nutrition"  # New
+    TRACK_SLEEP = "track_sleep"  # New
+    TRACK_MOOD = "track_mood"  # New
+    TRACK_MEDITATION = "track_meditation"  # New
+    TRACK_HYDRATION = "track_hydration"  # New
 
 ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
     UserRole.ADMIN: [
@@ -74,7 +81,14 @@ ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
         Permission.READ_STATS,
         Permission.MANAGE_PROFILE,
         Permission.MANAGE_exercise_trackers,
-        Permission.VIEW_AUDIT_LOGS
+        Permission.MANAGE_wellness_trackers,  # Admin can manage wellness trackers
+        Permission.VIEW_AUDIT_LOGS,
+        # Admin has all wellness permissions too
+        Permission.TRACK_NUTRITION,
+        Permission.TRACK_SLEEP,
+        Permission.TRACK_MOOD,
+        Permission.TRACK_MEDITATION,
+        Permission.TRACK_HYDRATION
     ],
     UserRole.exercise_tracker: [
         Permission.READ_ACTIVITIES,
@@ -85,6 +99,17 @@ ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
         Permission.DELETE_GOALS,
         Permission.READ_STATS,
         Permission.MANAGE_PROFILE
+        # Exercise trackers don't get wellness permissions
+    ],
+    UserRole.wellness_tracker: [  # New role permissions
+        Permission.READ_STATS,
+        Permission.MANAGE_PROFILE,
+        # Wellness-specific permissions
+        Permission.TRACK_NUTRITION,
+        Permission.TRACK_SLEEP,
+        Permission.TRACK_MOOD,
+        Permission.TRACK_MEDITATION,
+        Permission.TRACK_HYDRATION
     ]
 }
 # Create database tables
@@ -1248,3 +1273,222 @@ def get_audit_logs(
     
     logs = query.order_by(desc(models.AuditLog.timestamp)).offset(skip).limit(limit).all()
     return logs
+@app.post("/wellness_trackers", response_model=schemas.UserOut)
+def create_wellness_tracker(
+    user_data: schemas.WellnessTrackerCreate,  # You'll need to create this schema
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Create a new wellness tracker (Admin only)"""
+    # Check if username/email already exists
+    existing_user = db.query(models.User).filter(
+        (models.User.username == user_data.username) | 
+        (models.User.email == user_data.email)
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username or email already exists"
+        )
+    
+    hashed_password = get_password_hash(user_data.password)
+    
+    # Create wellness_tracker with fixed wellness_tracker role
+    new_wellness_tracker = models.User(
+        username=user_data.username,
+        email=user_data.email,
+        hashed_password=hashed_password,
+        role=UserRole.wellness_tracker,  # Always wellness_tracker role
+        created_by=current_user.id
+    )
+    
+    db.add(new_wellness_tracker)
+    db.commit()
+    db.refresh(new_wellness_tracker)
+    
+    # Create initial user stats
+    user_stats = models.UserStats(user_id=new_wellness_tracker.id)
+    db.add(user_stats)
+    db.commit()
+    
+    # Log action
+    wellness_permissions = get_role_permissions(UserRole.wellness_tracker)
+    log_user_action(
+        db, 
+        current_user.id, 
+        "CREATE_wellness_tracker", 
+        f"Created wellness tracker: {new_wellness_tracker.username} with permissions: {wellness_permissions}"
+    )
+    
+    return new_wellness_tracker
+
+@app.get("/wellness_trackers", response_model=List[schemas.UserOut])
+def get_wellness_trackers(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Get all wellness trackers (Admin only)"""
+    wellness_trackers = db.query(models.User).filter(
+        models.User.role == UserRole.wellness_tracker
+    ).offset(skip).limit(limit).all()
+    
+    return wellness_trackers
+
+@app.get("/wellness_trackers/{user_id}", response_model=schemas.UserOut)
+def get_wellness_tracker(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Get specific wellness tracker (Admin only)"""
+    wellness_tracker = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == UserRole.wellness_tracker
+    ).first()
+    
+    if not wellness_tracker:
+        raise HTTPException(status_code=404, detail="Wellness tracker not found")
+    
+    return wellness_tracker
+
+@app.put("/wellness_trackers/{user_id}", response_model=schemas.UserOut)
+def update_wellness_tracker(
+    user_id: int,
+    user_update: schemas.WellnessTrackerUpdate,  # You'll need to create this schema
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Update wellness tracker (Admin only)"""
+    wellness_tracker = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == UserRole.wellness_tracker
+    ).first()
+    
+    if not wellness_tracker:
+        raise HTTPException(status_code=404, detail="Wellness tracker not found")
+    
+    update_data = user_update.dict(exclude_unset=True)
+    
+    # Check for username/email conflicts
+    if "username" in update_data:
+        existing = db.query(models.User).filter(
+            models.User.username == update_data["username"],
+            models.User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Username already taken")
+    
+    if "email" in update_data:
+        existing = db.query(models.User).filter(
+            models.User.email == update_data["email"],
+            models.User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already taken")
+    
+    # Update fields
+    for field, value in update_data.items():
+        if field == "password":
+            setattr(wellness_tracker, "hashed_password", get_password_hash(value))
+        else:
+            setattr(wellness_tracker, field, value)
+    
+    db.commit()
+    db.refresh(wellness_tracker)
+    
+    # Log action
+    log_user_action(db, current_user.id, "UPDATE_wellness_tracker", f"Updated wellness tracker: {wellness_tracker.username}")
+    
+    return wellness_tracker
+
+@app.delete("/wellness_trackers/{user_id}")
+def delete_wellness_tracker(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Delete wellness tracker (Admin only)"""
+    wellness_tracker = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == UserRole.wellness_tracker
+    ).first()
+    
+    if not wellness_tracker:
+        raise HTTPException(status_code=404, detail="Wellness tracker not found")
+    
+    username = wellness_tracker.username
+    
+    try:
+        # Log action BEFORE deleting
+        log_user_action(db, current_user.id, "DELETE_wellness_tracker", f"Deleted wellness tracker: {username}")
+        
+        # Delete audit logs for this user
+        db.query(models.AuditLog).filter(models.AuditLog.user_id == user_id).delete(synchronize_session=False)
+        
+        # Delete related data
+        db.query(models.Activity).filter(models.Activity.user_id == user_id).delete(synchronize_session=False)
+        db.query(models.Goal).filter(models.Goal.user_id == user_id).delete(synchronize_session=False)
+        db.query(models.UserStats).filter(models.UserStats.user_id == user_id).delete(synchronize_session=False)
+        
+        # Delete user
+        db.delete(wellness_tracker)
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete wellness tracker: {str(e)}"
+        )
+    
+    return {"message": f"Wellness tracker {username} deleted successfully"}
+
+# 6. Update the permissions endpoint to include wellness_tracker
+@app.get("/permissions")
+def get_role_permissions_info(
+    current_user: models.User = Depends(get_admin_user)
+):
+    """Get fixed permissions for each role (Admin only)"""
+    return {
+        "message": "Permissions are fixed per role and cannot be modified",
+        "role_permissions": {
+            UserRole.ADMIN.value: get_role_permissions(UserRole.ADMIN),
+            UserRole.exercise_tracker.value: get_role_permissions(UserRole.exercise_tracker),
+            UserRole.wellness_tracker.value: get_role_permissions(UserRole.wellness_tracker)  # Added
+        },
+        "note": "These permissions are hardcoded and cannot be changed"
+    }
+
+# 7. Add wellness-specific activity endpoints (optional)
+@app.post("/wellness/nutrition", response_model=schemas.ActivityOut)
+def track_nutrition(
+    nutrition_data: schemas.NutritionCreate,  # You'll need to create this schema
+    current_user: models.User = Depends(permission_required([Permission.TRACK_NUTRITION])),
+    db: Session = Depends(get_db)
+):
+    """Track nutrition data (wellness_tracker and admin only)"""
+    # Implementation for nutrition tracking
+    pass
+
+@app.post("/wellness/sleep", response_model=schemas.ActivityOut)
+def track_sleep(
+    sleep_data: schemas.SleepCreate,  # You'll need to create this schema
+    current_user: models.User = Depends(permission_required([Permission.TRACK_SLEEP])),
+    db: Session = Depends(get_db)
+):
+    """Track sleep data (wellness_tracker and admin only)"""
+    # Implementation for sleep tracking
+    pass
+
+@app.post("/wellness/mood", response_model=schemas.ActivityOut)
+def track_mood(
+    mood_data: schemas.MoodCreate,  # You'll need to create this schema
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MOOD])),
+    db: Session = Depends(get_db)
+):
+    """Track mood data (wellness_tracker and admin only)"""
+    # Implementation for mood tracking
+    pass

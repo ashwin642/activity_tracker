@@ -10,6 +10,7 @@ Base = declarative_base()
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     exercise_tracker = "exercise_tracker"
+    wellness_tracker = "wellness_tracker"
 
 class PermissionModule(enum.Enum):
     ACTIVITIES = "activities"
