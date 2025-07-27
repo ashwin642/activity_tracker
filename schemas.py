@@ -7,7 +7,7 @@ from enum import Enum
 # Role and Permission Enums
 class UserRole(str, Enum):
     admin = "admin"
-    subuser = "subuser"
+    exercise_tracker = "exercise_tracker"
 
 class Permission(str, Enum):
     # Activity permissions
@@ -67,7 +67,7 @@ class TermsAcceptanceResponse(BaseModel):
 class UserBase(BaseModel):
     username: str
     email: str
-    role: UserRole = UserRole.subuser
+    role: UserRole = UserRole.exercise_tracker
 
 class UserCreate(UserBase):
     password: str
@@ -86,7 +86,7 @@ class UserCreate(UserBase):
             raise ValueError('Username must be at least 3 characters long')
         return v
 
-class SubUserCreate(BaseModel):
+class exercise_trackerCreate(BaseModel):
     username: str
     email: str
     password: str
@@ -128,7 +128,7 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     permissions: Optional[List[Permission]] = None
 
-class SubUserUpdate(BaseModel):
+class exercise_trackerUpdate(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
@@ -156,7 +156,7 @@ class UserOut(UserBase):
     class Config:
         orm_mode = True
 
-class SubUserOut(BaseModel):
+class exercise_trackerOut(BaseModel):
     id: int
     username: str
     email: str
@@ -292,8 +292,8 @@ class AdminDashboardData(BaseModel):
     user_stats: Optional[UserStatsOut] = None
     weekly_summary: dict
     monthly_summary: dict
-    subuser_count: int
-    recent_subusers: List[SubUserOut]
+    exercise_tracker_count: int
+    recent_exercise_trackers: List[exercise_trackerOut]
     system_stats: dict
 
 # Token Schemas

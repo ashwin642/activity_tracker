@@ -9,7 +9,7 @@ Base = declarative_base()
 
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
-    SUBUSER = "subuser"
+    exercise_tracker = "exercise_tracker"
 
 class PermissionModule(enum.Enum):
     ACTIVITIES = "activities"
@@ -35,7 +35,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     
     # Role-based access control
-    role = Column(Enum(UserRole), default=UserRole.SUBUSER, nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.exercise_tracker, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Admin who created this user
     
     # Profile information - COMMENTED OUT UNTIL MIGRATION IS RUN

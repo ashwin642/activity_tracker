@@ -48,7 +48,7 @@ class UserResponse(BaseModel):
 # Define user roles
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
-    SUBUSER = "subuser"
+    exercise_tracker = "exercise_tracker"
 
 # Define permissions
 class Permission(str, Enum):
@@ -60,7 +60,7 @@ class Permission(str, Enum):
     DELETE_GOALS = "delete_goals"
     READ_STATS = "read_stats"
     MANAGE_PROFILE = "manage_profile"
-    MANAGE_SUBUSERS = "manage_subusers"
+    MANAGE_exercise_trackers = "manage_exercise_trackers"
     VIEW_AUDIT_LOGS = "view_audit_logs"
 
 ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
@@ -73,10 +73,10 @@ ROLE_PERMISSIONS: Dict[UserRole, List[Permission]] = {
         Permission.DELETE_GOALS,
         Permission.READ_STATS,
         Permission.MANAGE_PROFILE,
-        Permission.MANAGE_SUBUSERS,
+        Permission.MANAGE_exercise_trackers,
         Permission.VIEW_AUDIT_LOGS
     ],
-    UserRole.SUBUSER: [
+    UserRole.exercise_tracker: [
         Permission.READ_ACTIVITIES,
         Permission.WRITE_ACTIVITIES, 
         Permission.DELETE_ACTIVITIES,
@@ -1026,13 +1026,13 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
 
-@app.post("/subusers", response_model=schemas.UserOut)
-def create_subuser(
-    user_data: schemas.SubUserCreate,
+@app.post("/exercise_trackers", response_model=schemas.UserOut)
+def create_exercise_tracker(
+    user_data: schemas.exercise_trackerCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_admin_user)
 ):
-    """Create a new sub-user (Admin only) - Subusers get fixed permissions"""
+    """Create a new sub-user (Admin only) - exercise_trackers get fixed permissions"""
     # Check if username/email already exists
     existing_user = db.query(models.User).filter(
         (models.User.username == user_data.username) | 
@@ -1047,80 +1047,80 @@ def create_subuser(
     
     hashed_password = get_password_hash(user_data.password)
     
-    # Create subuser with fixed SUBUSER role and permissions
-    new_subuser = models.User(
+    # Create exercise_tracker with fixed exercise_tracker role and permissions
+    new_exercise_tracker = models.User(
         username=user_data.username,
         email=user_data.email,
         hashed_password=hashed_password,
-        role=UserRole.SUBUSER,  # Always SUBUSER role
+        role=UserRole.exercise_tracker,  # Always exercise_tracker role
         created_by=current_user.id
     )
     
-    db.add(new_subuser)
+    db.add(new_exercise_tracker)
     db.commit()
-    db.refresh(new_subuser)
+    db.refresh(new_exercise_tracker)
     
     # Create initial user stats
-    user_stats = models.UserStats(user_id=new_subuser.id)
+    user_stats = models.UserStats(user_id=new_exercise_tracker.id)
     db.add(user_stats)
     db.commit()
     
     # Log action
-    subuser_permissions = get_role_permissions(UserRole.SUBUSER)
+    exercise_tracker_permissions = get_role_permissions(UserRole.exercise_tracker)
     log_user_action(
         db, 
         current_user.id, 
-        "CREATE_SUBUSER", 
-        f"Created sub-user: {new_subuser.username} with fixed permissions: {subuser_permissions}"
+        "CREATE_exercise_tracker", 
+        f"Created sub-user: {new_exercise_tracker.username} with fixed permissions: {exercise_tracker_permissions}"
     )
     
-    return new_subuser
+    return new_exercise_tracker
 
-@app.get("/subusers", response_model=List[schemas.UserOut])
-def get_subusers(
+@app.get("/exercise_trackers", response_model=List[schemas.UserOut])
+def get_exercise_trackers(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_admin_user)
 ):
     """Get all sub-users (Admin only)"""
-    subusers = db.query(models.User).filter(
-        models.User.role == UserRole.SUBUSER
+    exercise_trackers = db.query(models.User).filter(
+        models.User.role == UserRole.exercise_tracker
     ).offset(skip).limit(limit).all()
     
-    return subusers
+    return exercise_trackers
 
-@app.get("/subusers/{user_id}", response_model=schemas.UserOut)
-def get_subuser(
+@app.get("/exercise_trackers/{user_id}", response_model=schemas.UserOut)
+def get_exercise_tracker(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_admin_user)
 ):
     """Get specific sub-user (Admin only)"""
-    subuser = db.query(models.User).filter(
+    exercise_tracker = db.query(models.User).filter(
         models.User.id == user_id,
-        models.User.role == UserRole.SUBUSER
+        models.User.role == UserRole.exercise_tracker
     ).first()
     
-    if not subuser:
+    if not exercise_tracker:
         raise HTTPException(status_code=404, detail="Sub-user not found")
     
-    return subuser
+    return exercise_tracker
 
-@app.put("/subusers/{user_id}", response_model=schemas.UserOut)
-def update_subuser(
+@app.put("/exercise_trackers/{user_id}", response_model=schemas.UserOut)
+def update_exercise_tracker(
     user_id: int,
-    user_update: schemas.SubUserUpdate,
+    user_update: schemas.exercise_trackerUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_admin_user)
 ):
     """Update sub-user (Admin only)"""
-    subuser = db.query(models.User).filter(
+    exercise_tracker = db.query(models.User).filter(
         models.User.id == user_id,
-        models.User.role == UserRole.SUBUSER
+        models.User.role == UserRole.exercise_tracker
     ).first()
     
-    if not subuser:
+    if not exercise_tracker:
         raise HTTPException(status_code=404, detail="Sub-user not found")
     
     update_data = user_update.dict(exclude_unset=True)
@@ -1145,40 +1145,40 @@ def update_subuser(
     # Update fields
     for field, value in update_data.items():
         if field == "password":
-            setattr(subuser, "hashed_password", get_password_hash(value))
+            setattr(exercise_tracker, "hashed_password", get_password_hash(value))
         elif field == "permissions":
-            setattr(subuser, "permissions", json.dumps(value))
+            setattr(exercise_tracker, "permissions", json.dumps(value))
         else:
-            setattr(subuser, field, value)
+            setattr(exercise_tracker, field, value)
     
     db.commit()
-    db.refresh(subuser)
+    db.refresh(exercise_tracker)
     
     # Log action
-    log_user_action(db, current_user.id, "UPDATE_SUBUSER", f"Updated sub-user: {subuser.username}")
+    log_user_action(db, current_user.id, "UPDATE_exercise_tracker", f"Updated sub-user: {exercise_tracker.username}")
     
-    return subuser
+    return exercise_tracker
 
-@app.delete("/subusers/{user_id}")
-def delete_subuser(
+@app.delete("/exercise_trackers/{user_id}")
+def delete_exercise_tracker(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_admin_user)
 ):
     """Delete sub-user (Admin only)"""
-    subuser = db.query(models.User).filter(
+    exercise_tracker = db.query(models.User).filter(
         models.User.id == user_id,
-        models.User.role == UserRole.SUBUSER
+        models.User.role == UserRole.exercise_tracker
     ).first()
     
-    if not subuser:
+    if not exercise_tracker:
         raise HTTPException(status_code=404, detail="Sub-user not found")
     
-    username = subuser.username
+    username = exercise_tracker.username
     
     try:
         # Log action BEFORE deleting (while user still exists)
-        log_user_action(db, current_user.id, "DELETE_SUBUSER", f"Deleted sub-user: {username}")
+        log_user_action(db, current_user.id, "DELETE_exercise_tracker", f"Deleted sub-user: {username}")
         
         # Delete audit logs for this user first (or update them to reference the admin)
         # Option 1: Delete audit logs for this user
@@ -1196,7 +1196,7 @@ def delete_subuser(
         db.query(models.UserStats).filter(models.UserStats.user_id == user_id).delete(synchronize_session=False)
         
         # Delete user
-        db.delete(subuser)
+        db.delete(exercise_tracker)
         db.commit()
         
     except Exception as e:
@@ -1218,7 +1218,7 @@ def get_role_permissions_info(
         "message": "Permissions are fixed per role and cannot be modified",
         "role_permissions": {
             UserRole.ADMIN.value: get_role_permissions(UserRole.ADMIN),
-            UserRole.SUBUSER.value: get_role_permissions(UserRole.SUBUSER)
+            UserRole.exercise_tracker.value: get_role_permissions(UserRole.exercise_tracker)
         },
         "note": "These permissions are hardcoded and cannot be changed"
     }

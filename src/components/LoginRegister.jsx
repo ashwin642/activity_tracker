@@ -104,7 +104,7 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
       const endpoint = isLogin ? '/login' : '/register';
       const payload = isLogin 
         ? { username: formData.username, password: formData.password }
-        : { username: formData.username, email: formData.email, password: formData.password, role: 'subuser' };
+        : { username: formData.username, email: formData.email, password: formData.password, role: 'exercise_tracker' };
 
       // Create headers object with auth token
       const headers = {
@@ -144,13 +144,13 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
             userRole = data.user_role;
             username = data.user?.username || data.username || formData.username;
           } else {
-            // Default to subuser if no role is found
-            userRole = 'subuser';
+            // Default to exercise_tracker if no role is found
+            userRole = 'exercise_tracker';
             username = data.user?.username || data.username || formData.username;
           }
 
           // Normalize role string (trim whitespace, lowercase for comparison)
-          const normalizedRole = userRole ? userRole.toString().trim().toLowerCase() : 'subuser';
+          const normalizedRole = userRole ? userRole.toString().trim().toLowerCase() : 'exercise_tracker';
           
           console.log('Role detection:', {
             originalRole: userRole,

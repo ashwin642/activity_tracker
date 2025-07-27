@@ -161,11 +161,11 @@ const AdminDashboard = ({ onLogout }) => {
     setError('');
     
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/subusers`);
+      const response = await authenticatedFetch(`${API_BASE_URL}/exercise_trackers`);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Loaded subusers:', data);
+        console.log('Loaded exercise_trackers:', data);
         setUsers(data);
       } else if (response.status === 403) {
         setError('Access denied. Admin privileges required.');
@@ -182,8 +182,8 @@ const AdminDashboard = ({ onLogout }) => {
     }
   };
 
-  // Add new subuser
-  const addSubuser = async () => {
+  // Add new exercise_tracker
+  const addexercise_tracker = async () => {
     setAddUserLoading(true);
     setAddUserError('');
     
@@ -201,7 +201,7 @@ const AdminDashboard = ({ onLogout }) => {
     }
 
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/subusers`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/exercise_trackers`, {
         method: 'POST',
         body: JSON.stringify({
           username: newUser.username.trim(),
@@ -212,7 +212,7 @@ const AdminDashboard = ({ onLogout }) => {
       
       if (response.ok) {
         const createdUser = await response.json();
-        console.log('Created subuser:', createdUser);
+        console.log('Created exercise_tracker:', createdUser);
         
         // Reset form and close modal
         setNewUser({ username: '', email: '', password: '' });
@@ -231,7 +231,7 @@ const AdminDashboard = ({ onLogout }) => {
         }
       }
     } catch (error) {
-      console.error('Error creating subuser:', error);
+      console.error('Error creating exercise_tracker:', error);
       setAddUserError('Failed to create user. Please try again.');
     } finally {
       setAddUserLoading(false);
@@ -254,7 +254,7 @@ const AdminDashboard = ({ onLogout }) => {
     setError('');
     
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/subusers/${userId}`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/exercise_trackers/${userId}`, {
         method: 'DELETE'
       });
       
@@ -309,7 +309,7 @@ const AdminDashboard = ({ onLogout }) => {
     
     const matchesFilter = filterStatus === 'all' || 
       (filterStatus === 'admin' && user.role === 'admin') ||
-      (filterStatus === 'regular' && user.role === 'subuser');
+      (filterStatus === 'regular' && user.role === 'exercise_tracker');
     
     return matchesSearch && matchesFilter;
   });
@@ -497,7 +497,7 @@ const AdminDashboard = ({ onLogout }) => {
                               Admin
                             </span>
                           )}
-                          {user.role === 'subuser' && (
+                          {user.role === 'exercise_tracker' && (
                             <span className="px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
                               Sub-User
                             </span>
@@ -626,7 +626,7 @@ const AdminDashboard = ({ onLogout }) => {
                 </button>
                 <button
                   type="button"
-                  onClick={addSubuser}
+                  onClick={addexercise_tracker}
                   disabled={addUserLoading}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
@@ -672,7 +672,7 @@ const AdminDashboard = ({ onLogout }) => {
                           Admin
                         </span>
                       )}
-                      {selectedUser.role === 'subuser' && (
+                      {selectedUser.role === 'exercise_tracker' && (
                         <span className="ml-2 px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
                           Sub-User
                         </span>
