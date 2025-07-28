@@ -2,7 +2,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Date, Enum, JSON, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, date
 import enum
 
 Base = declarative_base()
@@ -82,6 +82,11 @@ class User(Base):
         foreign_keys="UserPermission.granted_by_user_id",
         back_populates="granted_by_user"
     )
+    nutrition_entries = relationship("NutritionEntry", back_populates="user", cascade="all, delete-orphan")
+    sleep_entries = relationship("SleepEntry", back_populates="user", cascade="all, delete-orphan")
+    mood_entries = relationship("MoodEntry", back_populates="user", cascade="all, delete-orphan")
+    meditation_entries = relationship("MeditationEntry", back_populates="user", cascade="all, delete-orphan")
+    hydration_entries = relationship("HydrationEntry", back_populates="user", cascade="all, delete-orphan")
 
 class Activity(Base):
     __tablename__ = "activities"
@@ -230,3 +235,86 @@ class Session(Base):
     
     # Relationships
     user = relationship("User")
+class NutritionEntry(Base):
+    __tablename__ = "nutrition_entries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    meal_type = Column(String(50), nullable=False)  # breakfast, lunch, dinner, snack
+    food_items = Column(Text, nullable=False)
+    calories = Column(Integer, nullable=True)
+    protein = Column(Float, nullable=True)
+    carbs = Column(Float, nullable=True)
+    sugar = Column(Float, nullable=True)
+    fat = Column(Float, nullable=True)
+    notes = Column(Text, nullable=True)
+    date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="nutrition_entries")
+
+class SleepEntry(Base):
+    __tablename__ = "sleep_entries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    bedtime = Column(DateTime, nullable=False)
+    wake_time = Column(DateTime, nullable=False)
+    sleep_quality = Column(Integer, nullable=False)  # 1-10 scale
+    sleep_duration = Column(Integer, nullable=True)  # in minutes
+    notes = Column(Text, nullable=True)
+    date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="sleep_entries")
+
+class MoodEntry(Base):
+    __tablename__ = "mood_entries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    mood_rating = Column(Integer, nullable=False)  # 1-10 scale
+    mood_type = Column(String(100), nullable=False)  # happy, sad, anxious, calm, etc.
+    energy_level = Column(Integer, nullable=True)  # 1-10 scale
+    stress_level = Column(Integer, nullable=True)  # 1-10 scale
+    notes = Column(Text, nullable=True)
+    date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="mood_entries")
+
+class MeditationEntry(Base):
+    __tablename__ = "meditation_entries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    duration = Column(Integer, nullable=False)  # in minutes
+    meditation_type = Column(String(100), nullable=False)  # mindfulness, breathing, guided, etc.
+    notes = Column(Text, nullable=True)
+    date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="meditation_entries")
+
+class HydrationEntry(Base):
+    __tablename__ = "hydration_entries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    water_intake = Column(Float, nullable=False)  # in liters or cups
+    time_logged = Column(DateTime, nullable=False)
+    notes = Column(Text, nullable=True)
+    date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="hydration_entries")

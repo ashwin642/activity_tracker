@@ -1462,33 +1462,394 @@ def get_role_permissions_info(
         "note": "These permissions are hardcoded and cannot be changed"
     }
 
-# 7. Add wellness-specific activity endpoints (optional)
-@app.post("/wellness/nutrition", response_model=schemas.ActivityOut)
+
+# Updated wellness endpoints using separate models
+
+from typing import List, Optional
+from datetime import datetime, date, timedelta
+from fastapi import HTTPException, status
+
+# NUTRITION ENDPOINTS
+@app.post("/wellness/nutrition", response_model=schemas.NutritionOut)
 def track_nutrition(
-    nutrition_data: schemas.NutritionCreate,  # You'll need to create this schema
+    nutrition_data: schemas.NutritionCreate,
     current_user: models.User = Depends(permission_required([Permission.TRACK_NUTRITION])),
     db: Session = Depends(get_db)
 ):
     """Track nutrition data (wellness_tracker and admin only)"""
-    # Implementation for nutrition tracking
-    pass
+    try:
+        new_nutrition = models.NutritionEntry(
+            user_id=current_user.id,
+            meal_type=nutrition_data.meal_type,
+            food_items=nutrition_data.food_items,
+            calories=nutrition_data.calories,
+            protein=nutrition_data.protein,
+            carbs=nutrition_data.carbs,
+            sugar=nutrition_data.sugar,
+            fat=nutrition_data.fat,
+            notes=nutrition_data.notes,
+            date=date.today()
+        )
+        
+        db.add(new_nutrition)
+        db.commit()
+        db.refresh(new_nutrition)
+        
+        # Log the action
+        log_user_action(
+            db, 
+            current_user.id, 
+            "TRACK_NUTRITION", 
+            f"Tracked nutrition: {nutrition_data.meal_type} - {nutrition_data.food_items[:30]}"
+        )
+        
+        return new_nutrition
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to track nutrition: {str(e)}"
+        )
 
-@app.post("/wellness/sleep", response_model=schemas.ActivityOut)
+@app.get("/wellness/nutrition", response_model=List[schemas.NutritionOut])
+def get_nutrition_activities(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_NUTRITION])),
+    db: Session = Depends(get_db)
+):
+    """Get nutrition entries for current user"""
+    query = db.query(models.NutritionEntry).filter(
+        models.NutritionEntry.user_id == current_user.id
+    )
+    
+    if start_date:
+        query = query.filter(models.NutritionEntry.date >= start_date)
+    if end_date:
+        query = query.filter(models.NutritionEntry.date <= end_date)
+    
+    entries = query.order_by(models.NutritionEntry.date.desc()).offset(skip).limit(limit).all()
+    return entries
+
+@app.delete("/wellness/nutrition/{entry_id}")
+def delete_nutrition_entry(
+    entry_id: int,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_NUTRITION])),
+    db: Session = Depends(get_db)
+):
+    """Delete nutrition entry"""
+    entry = db.query(models.NutritionEntry).filter(
+        models.NutritionEntry.id == entry_id,
+        models.NutritionEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Nutrition entry not found")
+    
+    try:
+        log_user_action(db, current_user.id, "DELETE_NUTRITION", f"Deleted nutrition entry: {entry.food_items[:30]}")
+        db.delete(entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete entry: {str(e)}")
+    
+    return {"message": "Nutrition entry deleted successfully"}
+
+# SLEEP ENDPOINTS
+@app.post("/wellness/sleep", response_model=schemas.SleepOut)
 def track_sleep(
-    sleep_data: schemas.SleepCreate,  # You'll need to create this schema
+    sleep_data: schemas.SleepCreate,
     current_user: models.User = Depends(permission_required([Permission.TRACK_SLEEP])),
     db: Session = Depends(get_db)
 ):
     """Track sleep data (wellness_tracker and admin only)"""
-    # Implementation for sleep tracking
-    pass
+    try:
+        new_sleep = models.SleepEntry(
+            user_id=current_user.id,
+            bedtime=sleep_data.bedtime,
+            wake_time=sleep_data.wake_time,
+            sleep_quality=sleep_data.sleep_quality,
+            sleep_duration=sleep_data.sleep_duration,
+            notes=sleep_data.notes,
+            date=date.today()
+        )
+        
+        db.add(new_sleep)
+        db.commit()
+        db.refresh(new_sleep)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "TRACK_SLEEP", 
+            f"Tracked sleep: {sleep_data.sleep_duration or 0}min (Quality: {sleep_data.sleep_quality}/10)"
+        )
+        
+        return new_sleep
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to track sleep: {str(e)}"
+        )
 
-@app.post("/wellness/mood", response_model=schemas.ActivityOut)
+@app.get("/wellness/sleep", response_model=List[schemas.SleepOut])
+def get_sleep_activities(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_SLEEP])),
+    db: Session = Depends(get_db)
+):
+    """Get sleep entries for current user"""
+    query = db.query(models.SleepEntry).filter(
+        models.SleepEntry.user_id == current_user.id
+    )
+    
+    if start_date:
+        query = query.filter(models.SleepEntry.date >= start_date)
+    if end_date:
+        query = query.filter(models.SleepEntry.date <= end_date)
+    
+    entries = query.order_by(models.SleepEntry.date.desc()).offset(skip).limit(limit).all()
+    return entries
+
+@app.delete("/wellness/sleep/{entry_id}")
+def delete_sleep_entry(
+    entry_id: int,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_SLEEP])),
+    db: Session = Depends(get_db)
+):
+    """Delete sleep entry"""
+    entry = db.query(models.SleepEntry).filter(
+        models.SleepEntry.id == entry_id,
+        models.SleepEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Sleep entry not found")
+    
+    try:
+        log_user_action(db, current_user.id, "DELETE_SLEEP", f"Deleted sleep entry: Quality {entry.sleep_quality}/10")
+        db.delete(entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete entry: {str(e)}")
+    
+    return {"message": "Sleep entry deleted successfully"}
+
+# MOOD ENDPOINTS
+@app.post("/wellness/mood", response_model=schemas.MoodOut)
 def track_mood(
-    mood_data: schemas.MoodCreate,  # You'll need to create this schema
+    mood_data: schemas.MoodCreate,
     current_user: models.User = Depends(permission_required([Permission.TRACK_MOOD])),
     db: Session = Depends(get_db)
 ):
     """Track mood data (wellness_tracker and admin only)"""
-    # Implementation for mood tracking
-    pass
+    try:
+        new_mood = models.MoodEntry(
+            user_id=current_user.id,
+            mood_rating=mood_data.mood_rating,
+            mood_type=mood_data.mood_type,
+            energy_level=mood_data.energy_level,
+            stress_level=mood_data.stress_level,
+            notes=mood_data.notes,
+            date=date.today()
+        )
+        
+        db.add(new_mood)
+        db.commit()
+        db.refresh(new_mood)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "TRACK_MOOD", 
+            f"Tracked mood: {mood_data.mood_type} - {mood_data.mood_rating}/10"
+        )
+        
+        return new_mood
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to track mood: {str(e)}"
+        )
+
+@app.get("/wellness/mood", response_model=List[schemas.MoodOut])
+def get_mood_activities(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MOOD])),
+    db: Session = Depends(get_db)
+):
+    """Get mood entries for current user"""
+    query = db.query(models.MoodEntry).filter(
+        models.MoodEntry.user_id == current_user.id
+    )
+    
+    if start_date:
+        query = query.filter(models.MoodEntry.date >= start_date)
+    if end_date:
+        query = query.filter(models.MoodEntry.date <= end_date)
+    
+    entries = query.order_by(models.MoodEntry.date.desc()).offset(skip).limit(limit).all()
+    return entries
+
+@app.delete("/wellness/mood/{entry_id}")
+def delete_mood_entry(
+    entry_id: int,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MOOD])),
+    db: Session = Depends(get_db)
+):
+    """Delete mood entry"""
+    entry = db.query(models.MoodEntry).filter(
+        models.MoodEntry.id == entry_id,
+        models.MoodEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Mood entry not found")
+    
+    try:
+        log_user_action(db, current_user.id, "DELETE_MOOD", f"Deleted mood entry: {entry.mood_type}")
+        db.delete(entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete entry: {str(e)}")
+    
+    return {"message": "Mood entry deleted successfully"}
+
+# MEDITATION ENDPOINTS
+@app.post("/wellness/meditation", response_model=schemas.MeditationOut)
+def track_meditation(
+    meditation_data: schemas.MeditationCreate,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MEDITATION])),  # Add this permission
+    db: Session = Depends(get_db)
+):
+    """Track meditation data"""
+    try:
+        new_meditation = models.MeditationEntry(
+            user_id=current_user.id,
+            duration=meditation_data.duration,
+            meditation_type=meditation_data.meditation_type,
+            notes=meditation_data.notes,
+            date=date.today()
+        )
+        
+        db.add(new_meditation)
+        db.commit()
+        db.refresh(new_meditation)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "TRACK_MEDITATION", 
+            f"Tracked meditation: {meditation_data.meditation_type} - {meditation_data.duration}min"
+        )
+        
+        return new_meditation
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to track meditation: {str(e)}"
+        )
+
+# HYDRATION ENDPOINTS
+@app.post("/wellness/hydration", response_model=schemas.HydrationOut)
+def track_hydration(
+    hydration_data: schemas.HydrationCreate,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_HYDRATION])),  # Add this permission
+    db: Session = Depends(get_db)
+):
+    """Track hydration data"""
+    try:
+        new_hydration = models.HydrationEntry(
+            user_id=current_user.id,
+            water_intake=hydration_data.water_intake,
+            time_logged=hydration_data.time_logged,
+            notes=hydration_data.notes,
+            date=date.today()
+        )
+        
+        db.add(new_hydration)
+        db.commit()
+        db.refresh(new_hydration)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "TRACK_HYDRATION", 
+            f"Tracked hydration: {hydration_data.water_intake}L"
+        )
+        
+        return new_hydration
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to track hydration: {str(e)}"
+        )
+
+# DASHBOARD SUMMARY
+@app.get("/wellness/summary")
+def get_wellness_dashboard_summary(
+    days: int = 30,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get wellness summary for dashboard"""
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days)
+    
+    # Get counts for each activity type
+    nutrition_count = db.query(models.NutritionEntry).filter(
+        models.NutritionEntry.user_id == current_user.id,
+        models.NutritionEntry.date >= start_date
+    ).count()
+    
+    sleep_count = db.query(models.SleepEntry).filter(
+        models.SleepEntry.user_id == current_user.id,
+        models.SleepEntry.date >= start_date
+    ).count()
+    
+    mood_count = db.query(models.MoodEntry).filter(
+        models.MoodEntry.user_id == current_user.id,
+        models.MoodEntry.date >= start_date
+    ).count()
+    
+    meditation_count = db.query(models.MeditationEntry).filter(
+        models.MeditationEntry.user_id == current_user.id,
+        models.MeditationEntry.date >= start_date
+    ).count()
+    
+    hydration_count = db.query(models.HydrationEntry).filter(
+        models.HydrationEntry.user_id == current_user.id,
+        models.HydrationEntry.date >= start_date
+    ).count()
+    
+    return {
+        "period_days": days,
+        "summary": {
+            "nutrition_entries": nutrition_count,
+            "sleep_entries": sleep_count,
+            "mood_entries": mood_count,
+            "meditation_entries": meditation_count,
+            "hydration_entries": hydration_count,
+            "total_entries": nutrition_count + sleep_count + mood_count + meditation_count + hydration_count
+        }
+    }

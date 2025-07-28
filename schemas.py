@@ -1,7 +1,7 @@
 # schemas.py - Enhanced version with role-based access control
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum
 import enum
 
@@ -344,6 +344,7 @@ class NutritionCreate(BaseModel):
     calories: Optional[int] = None
     protein: Optional[float] = None
     carbs: Optional[float] = None
+    sugar: Optional[float] = None
     fat: Optional[float] = None
     notes: Optional[str] = None
 
@@ -370,3 +371,76 @@ class HydrationCreate(BaseModel):
     water_intake: float  # in liters or cups
     time_logged: datetime
     notes: Optional[str] = None
+class NutritionOut(BaseModel):
+    id: int
+    user_id: int
+    meal_type: str
+    food_items: str
+    calories: Optional[int] = None
+    protein: Optional[float] = None
+    carbs: Optional[float] = None
+    sugar: Optional[float] = None
+    fat: Optional[float] = None
+    notes: Optional[str] = None
+    date: date
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class SleepOut(BaseModel):
+    id: int
+    user_id: int
+    bedtime: datetime
+    wake_time: datetime
+    sleep_quality: int
+    sleep_duration: Optional[int] = None
+    notes: Optional[str] = None
+    date: date
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class MoodOut(BaseModel):
+    id: int
+    user_id: int
+    mood_rating: int
+    mood_type: str
+    energy_level: Optional[int] = None
+    stress_level: Optional[int] = None
+    notes: Optional[str] = None
+    date: date
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class MeditationOut(BaseModel):
+    id: int
+    user_id: int
+    duration: int
+    meditation_type: str
+    notes: Optional[str] = None
+    date: date
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class HydrationOut(BaseModel):
+    id: int
+    user_id: int
+    water_intake: float
+    time_logged: datetime
+    notes: Optional[str] = None
+    date: date
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
