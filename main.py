@@ -1463,12 +1463,6 @@ def get_role_permissions_info(
     }
 
 
-# Updated wellness endpoints using separate models
-
-from typing import List, Optional
-from datetime import datetime, date, timedelta
-from fastapi import HTTPException, status
-
 # NUTRITION ENDPOINTS
 @app.post("/wellness/nutrition", response_model=schemas.NutritionOut)
 def track_nutrition(
@@ -1735,7 +1729,7 @@ def delete_mood_entry(
 @app.post("/wellness/meditation", response_model=schemas.MeditationOut)
 def track_meditation(
     meditation_data: schemas.MeditationCreate,
-    current_user: models.User = Depends(permission_required([Permission.TRACK_MEDITATION])),  # Add this permission
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MEDITATION])),
     db: Session = Depends(get_db)
 ):
     """Track meditation data"""
@@ -1768,11 +1762,58 @@ def track_meditation(
             detail=f"Failed to track meditation: {str(e)}"
         )
 
+@app.get("/wellness/meditation", response_model=List[schemas.MeditationOut])
+def get_meditation_activities(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MEDITATION])),
+    db: Session = Depends(get_db)
+):
+    """Get meditation entries for current user"""
+    query = db.query(models.MeditationEntry).filter(
+        models.MeditationEntry.user_id == current_user.id
+    )
+    
+    if start_date:
+        query = query.filter(models.MeditationEntry.date >= start_date)
+    if end_date:
+        query = query.filter(models.MeditationEntry.date <= end_date)
+    
+    entries = query.order_by(models.MeditationEntry.date.desc()).offset(skip).limit(limit).all()
+    return entries
+
+@app.delete("/wellness/meditation/{entry_id}")
+def delete_meditation_entry(
+    entry_id: int,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MEDITATION])),
+    db: Session = Depends(get_db)
+):
+    """Delete meditation entry"""
+    entry = db.query(models.MeditationEntry).filter(
+        models.MeditationEntry.id == entry_id,
+        models.MeditationEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Meditation entry not found")
+    
+    try:
+        log_user_action(db, current_user.id, "DELETE_MEDITATION", f"Deleted meditation entry: {entry.meditation_type} - {entry.duration}min")
+        db.delete(entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete entry: {str(e)}")
+    
+    return {"message": "Meditation entry deleted successfully"}
+
 # HYDRATION ENDPOINTS
 @app.post("/wellness/hydration", response_model=schemas.HydrationOut)
 def track_hydration(
     hydration_data: schemas.HydrationCreate,
-    current_user: models.User = Depends(permission_required([Permission.TRACK_HYDRATION])),  # Add this permission
+    current_user: models.User = Depends(permission_required([Permission.TRACK_HYDRATION])),
     db: Session = Depends(get_db)
 ):
     """Track hydration data"""
@@ -1804,6 +1845,53 @@ def track_hydration(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to track hydration: {str(e)}"
         )
+
+@app.get("/wellness/hydration", response_model=List[schemas.HydrationOut])
+def get_hydration_activities(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_HYDRATION])),
+    db: Session = Depends(get_db)
+):
+    """Get hydration entries for current user"""
+    query = db.query(models.HydrationEntry).filter(
+        models.HydrationEntry.user_id == current_user.id
+    )
+    
+    if start_date:
+        query = query.filter(models.HydrationEntry.date >= start_date)
+    if end_date:
+        query = query.filter(models.HydrationEntry.date <= end_date)
+    
+    entries = query.order_by(models.HydrationEntry.date.desc()).offset(skip).limit(limit).all()
+    return entries
+
+@app.delete("/wellness/hydration/{entry_id}")
+def delete_hydration_entry(
+    entry_id: int,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_HYDRATION])),
+    db: Session = Depends(get_db)
+):
+    """Delete hydration entry"""
+    entry = db.query(models.HydrationEntry).filter(
+        models.HydrationEntry.id == entry_id,
+        models.HydrationEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Hydration entry not found")
+    
+    try:
+        log_user_action(db, current_user.id, "DELETE_HYDRATION", f"Deleted hydration entry: {entry.water_intake}L")
+        db.delete(entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete entry: {str(e)}")
+    
+    return {"message": "Hydration entry deleted successfully"}
 
 # DASHBOARD SUMMARY
 @app.get("/wellness/summary")

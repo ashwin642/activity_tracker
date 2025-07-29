@@ -10,7 +10,9 @@ import {
   Trash2,
   BarChart3,
   Search,
-  Zap
+  Zap,
+  Shield,
+  AlertTriangle
 } from 'lucide-react';
 
 const Dashboard = ({ onLogout }) => {
@@ -21,6 +23,8 @@ const Dashboard = ({ onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [roleCheckLoading, setRoleCheckLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
   const [newActivity, setNewActivity] = useState({
     activity_name: '',
     duration: '',
@@ -65,6 +69,23 @@ const Dashboard = ({ onLogout }) => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('token'); // Legacy token
+  };
+
+  // Check if user has required role
+  const checkUserRole = (userData) => {
+    console.log('Checking user role:', userData);
+    
+    // Check if user has the exercise_tracker role
+    if (userData && userData.role === 'exercise_tracker') {
+      return true;
+    }
+    
+    // Also check if roles is an array (in case of multiple roles)
+    if (userData && Array.isArray(userData.roles)) {
+      return userData.roles.includes('exercise_tracker');
+    }
+    
+    return false;
   };
 
   // Refresh access token using refresh token
@@ -147,17 +168,69 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
-  // Load user data on component mount
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
+  // Fetch current user profile from API to get latest role information
+  const fetchUserProfile = async () => {
+    try {
+      const response = await authenticatedFetch(`${API_BASE_URL}/auth/me`);
+      
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('Fetched user profile:', userData);
+        
+        // Update localStorage with latest user data
+        localStorage.setItem('user', JSON.stringify(userData));
+        setUser(userData);
+        
+        return userData;
+      } else {
+        throw new Error('Failed to fetch user profile');
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      // Fall back to localStorage data if API call fails
+      const localUserData = localStorage.getItem('user');
+      if (localUserData) {
+        const userData = JSON.parse(localUserData);
+        setUser(userData);
+        return userData;
+      }
+      throw error;
     }
-    loadActivities();
+  };
+
+  // Load user data and check role on component mount
+  useEffect(() => {
+    const initializeUser = async () => {
+      setRoleCheckLoading(true);
+      
+      try {
+        // Try to fetch latest user profile from API
+        const userData = await fetchUserProfile();
+        
+        // Check if user has the required role
+        const hasRequiredRole = checkUserRole(userData);
+        setHasAccess(hasRequiredRole);
+        
+        if (hasRequiredRole) {
+          // Only load activities if user has access
+          loadActivities();
+        }
+      } catch (error) {
+        console.error('Error initializing user:', error);
+        setError('Failed to verify user permissions. Please try logging in again.');
+        setHasAccess(false);
+      } finally {
+        setRoleCheckLoading(false);
+      }
+    };
+
+    initializeUser();
   }, []);
 
   // Load activities from API
   const loadActivities = async () => {
+    if (!hasAccess) return;
+    
     setLoading(true);
     setError('');
     
@@ -241,6 +314,8 @@ const Dashboard = ({ onLogout }) => {
   // Add new activity
   const handleAddActivity = async (e) => {
     e.preventDefault();
+    if (!hasAccess) return;
+    
     setLoading(true);
     setError('');
     
@@ -291,6 +366,7 @@ const Dashboard = ({ onLogout }) => {
 
   // Delete activity
   const deleteActivity = async (id) => {
+    if (!hasAccess) return;
     if (!confirm('Are you sure you want to delete this activity?')) return;
     
     setLoading(true);
@@ -351,6 +427,56 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
+  // Show loading screen while checking role
+  if (roleCheckLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-4"></div>
+          <p className="text-gray-600">Verifying permissions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied screen if user doesn't have the required role
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-rose-100 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 text-center max-w-md">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 bg-red-100 rounded-full">
+              <Shield className="w-8 h-8 text-red-600" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h2>
+          <p className="text-gray-600 mb-6">
+            You don't have permission to access the Activity Tracker. This feature is only available to users with the "exercise_tracker" role.
+          </p>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 mr-2 mt-0.5" />
+              <div className="text-sm text-yellow-800">
+                <p className="font-medium">Current Role: {user?.role || 'No role assigned'}</p>
+                <p>Required Role: exercise_tracker</p>
+              </div>
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-6">
+            Please contact your administrator to request access to the Activity Tracker feature.
+          </p>
+          <button
+            onClick={handleLogout}
+            className="flex items-center justify-center w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Return to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">
       {/* Header */}
@@ -365,6 +491,10 @@ const Dashboard = ({ onLogout }) => {
             </div>
             
             <div className="flex items-center space-x-4">
+              <div className="flex items-center text-sm text-gray-500">
+                <Shield className="w-4 h-4 mr-1" />
+                <span>{user?.role}</span>
+              </div>
               <span className="text-gray-600">Welcome, {user?.username || 'User'}!</span>
               <button
                 onClick={handleLogout}

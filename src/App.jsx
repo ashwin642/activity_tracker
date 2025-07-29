@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import LoginRegister from './components/LoginRegister';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
+import WellnessDashboard from './components/WellnessDashboard';
 import TermsAndConditions from './components/TermsAndConditions';
 import './App.css';
 
@@ -11,20 +12,22 @@ function App() {
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
   const [authToken, setAuthToken] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [user, setUser] = useState(null); // Add user state to track full user data
 
   useEffect(() => {
     // Don't check for previously accepted terms - always require acceptance
     // Only check if user is already logged in
     const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
+    const userData = localStorage.getItem('user');
     
-    if (token && user) {
+    if (token && userData) {
       try {
-        const userData = JSON.parse(user);
+        const parsedUser = JSON.parse(userData);
         setIsLoggedIn(true);
-        setUserRole(userData.role);
+        setUser(parsedUser); // Store full user data
+        setUserRole(parsedUser.role);
         setHasAcceptedTerms(true); // If they're already logged in, assume terms were accepted
-        console.log('Auto-login detected:', userData);
+        console.log('Auto-login detected:', parsedUser);
       } catch (error) {
         console.error('Error parsing stored user data:', error);
         // If user data is corrupted, clear it
@@ -56,6 +59,7 @@ function App() {
         const parsedUser = JSON.parse(userData);
         console.log('User data loaded:', parsedUser);
         setIsLoggedIn(true);
+        setUser(parsedUser); // Store full user data
         setUserRole(parsedUser.role || 'subuser');
       } catch (error) {
         console.error('Error parsing user data on login:', error);
@@ -80,6 +84,7 @@ function App() {
         const parsedUser = JSON.parse(userData);
         console.log('Admin user data loaded:', parsedUser);
         setIsLoggedIn(true);
+        setUser(parsedUser); // Store full user data
         setUserRole('admin');
       } catch (error) {
         console.error('Error parsing admin user data on login:', error);
@@ -104,6 +109,7 @@ function App() {
         const parsedUser = JSON.parse(userData);
         console.log('User data loaded:', parsedUser);
         setIsLoggedIn(true);
+        setUser(parsedUser); // Store full user data
         setUserRole(parsedUser.role || role || 'subuser');
       } catch (error) {
         console.error('Error parsing user data on login:', error);
@@ -128,10 +134,37 @@ function App() {
     
     // Reset state
     setIsLoggedIn(false);
+    setUser(null);
     setUserRole(null);
     // Reset terms acceptance on logout so it's required again
     setHasAcceptedTerms(false);
     setAuthToken(null);
+  };
+
+  // Function to render the appropriate dashboard based on user role and permissions
+  const renderDashboard = () => {
+    console.log('Rendering dashboard for user:', user);
+    console.log('User role:', userRole);
+    
+    // Check for admin role first
+    if (userRole === 'admin') {
+      return <AdminDashboard onLogout={handleLogout} />;
+    }
+    
+    // Check if user has wellness_tracker in their roles array
+    if (user && user.roles && user.roles.includes('wellness_tracker')) {
+      return <WellnessDashboard user={user} onLogout={handleLogout} />;
+    }
+    
+    // Check for specific wellness_tracker role
+    if (userRole === 'wellness_tracker') {
+      return <WellnessDashboard user={user} onLogout={handleLogout} />;
+    }
+    
+    // Check for exercise_tracker role
+    if (userRole === 'exercise_tracker') {
+      return <Dashboard onLogout={handleLogout} />;
+    }
   };
 
   if (isLoading) {
@@ -152,11 +185,7 @@ function App() {
   return (
     <div className="App">
       {isLoggedIn ? (
-        userRole === 'admin' ? (
-          <AdminDashboard onLogout={handleLogout} />
-        ) : (
-          <Dashboard onLogout={handleLogout} />
-        )
+        renderDashboard()
       ) : (
         <LoginRegister 
           onLogin={handleUserLogin}

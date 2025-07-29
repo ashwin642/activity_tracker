@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, Activity, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { User, Mail, Lock, Activity, Eye, EyeOff, AlertCircle, UserCheck } from 'lucide-react';
 
 const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -7,7 +7,8 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
     username: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    role: ''
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -25,6 +26,20 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
   };
 
   const API_BASE_URL = getApiUrl();
+
+  // Role options for registration
+  const roleOptions = [
+    {
+      value: 'wellness_tracker',
+      label: 'Wellness Tracker',
+      description: 'Focus on overall wellness, mental health, and lifestyle tracking'
+    },
+    {
+      value: 'exercise_tracker',
+      label: 'Exercise Tracker',
+      description: 'Focus on fitness activities, workouts, and physical performance'
+    }
+  ];
 
   // Token management functions (consistent with Dashboard)
   const saveTokens = (accessToken, refreshToken) => {
@@ -78,6 +93,11 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
       } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
         newErrors.email = 'Please enter a valid email';
       }
+
+      // Role validation for registration
+      if (!formData.role) {
+        newErrors.role = 'Please select a tracking focus';
+      }
     }
 
     if (!formData.password) {
@@ -104,7 +124,7 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
       const endpoint = isLogin ? '/login' : '/register';
       const payload = isLogin 
         ? { username: formData.username, password: formData.password }
-        : { username: formData.username, email: formData.email, password: formData.password, role: 'exercise_tracker' };
+        : { username: formData.username, email: formData.email, password: formData.password, role: formData.role };
 
       // Create headers object with auth token
       const headers = {
@@ -215,7 +235,8 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
             username: '',
             email: '',
             password: '',
-            confirmPassword: ''
+            confirmPassword: '',
+            role: ''
           });
           
           // Switch back to login mode after successful registration
@@ -288,7 +309,8 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
       username: '',
       email: '',
       password: '',
-      confirmPassword: ''
+      confirmPassword: '',
+      role: ''
     });
     setErrors({});
     setMessage('');
@@ -373,6 +395,39 @@ const LoginRegister = ({ onLogin, onAdminLogin, authToken }) => {
               </div>
               {errors.email && (
                 <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              )}
+            </div>
+          )}
+
+          {/* Role Selection Field (Register only) */}
+          {!isLogin && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <UserCheck className="w-4 h-4 inline mr-1" />
+                Tracking Focus
+              </label>
+              <div className="space-y-3">
+                {roleOptions.map((role) => (
+                  <label key={role.value} className={`flex items-start space-x-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
+                    formData.role === role.value ? 'border-green-500 bg-green-50' : errors.role ? 'border-red-300' : 'border-gray-200'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="role"
+                      value={role.value}
+                      checked={formData.role === role.value}
+                      onChange={handleInputChange}
+                      className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500 mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900 text-sm">{role.label}</div>
+                      <div className="text-xs text-gray-600 mt-1">{role.description}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {errors.role && (
+                <p className="mt-1 text-sm text-red-600">{errors.role}</p>
               )}
             </div>
           )}

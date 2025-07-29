@@ -25,7 +25,8 @@ const AdminDashboard = ({ onLogout }) => {
   const [newUser, setNewUser] = useState({
     username: '',
     email: '',
-    password: ''
+    password: '',
+    role: 'exercise_tracker'
   });
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [addUserError, setAddUserError] = useState('');
@@ -206,7 +207,8 @@ const AdminDashboard = ({ onLogout }) => {
         body: JSON.stringify({
           username: newUser.username.trim(),
           email: newUser.email.trim(),
-          password: newUser.password
+          password: newUser.password,
+          role: newUser.role
         })
       });
       
@@ -215,7 +217,7 @@ const AdminDashboard = ({ onLogout }) => {
         console.log('Created exercise_tracker:', createdUser);
         
         // Reset form and close modal
-        setNewUser({ username: '', email: '', password: '' });
+        setNewUser({ username: '', email: '', password: '', role: 'exercise_tracker' });
         setShowAddUserModal(false);
         
         // Reload users list
@@ -297,7 +299,7 @@ const AdminDashboard = ({ onLogout }) => {
   // Close add user modal and reset form
   const closeAddUserModal = () => {
     setShowAddUserModal(false);
-    setNewUser({ username: '', email: '', password: '' });
+    setNewUser({ username: '', email: '', password: '', role: 'exercise_tracker' });
     setAddUserError('');
   };
 
@@ -309,7 +311,7 @@ const AdminDashboard = ({ onLogout }) => {
     
     const matchesFilter = filterStatus === 'all' || 
       (filterStatus === 'admin' && user.role === 'admin') ||
-      (filterStatus === 'regular' && user.role === 'exercise_tracker');
+      (filterStatus === 'regular' && (user.role === 'exercise_tracker' || user.role === 'wellness_tracker'));
     
     return matchesSearch && matchesFilter;
   });
@@ -497,9 +499,9 @@ const AdminDashboard = ({ onLogout }) => {
                               Admin
                             </span>
                           )}
-                          {user.role === 'exercise_tracker' && (
+                          {(user.role === 'exercise_tracker' || user.role === 'wellness_tracker') && (
                             <span className="px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
-                              Sub-User
+                              {user.role === 'exercise_tracker' ? 'Exercise Tracker' : 'Wellness Tracker'}
                             </span>
                           )}
                         </div>
@@ -598,6 +600,23 @@ const AdminDashboard = ({ onLogout }) => {
                 </div>
                 
                 <div>
+                  <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+                    Role
+                  </label>
+                  <select
+                    id="role"
+                    value={newUser.role}
+                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                    disabled={addUserLoading}
+                  >
+                    <option value="exercise_tracker">Exercise Tracker</option>
+                    <option value="wellness_tracker">Wellness Tracker</option>
+                  </select>
+                </div>
+                
+                <div>
                   <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                     Password
                   </label>
@@ -672,9 +691,9 @@ const AdminDashboard = ({ onLogout }) => {
                           Admin
                         </span>
                       )}
-                      {selectedUser.role === 'exercise_tracker' && (
+                      {(selectedUser.role === 'exercise_tracker' || selectedUser.role === 'wellness_tracker') && (
                         <span className="ml-2 px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
-                          Sub-User
+                          {selectedUser.role === 'exercise_tracker' ? 'Exercise Tracker' : 'Wellness Tracker'}
                         </span>
                       )}
                     </h3>
