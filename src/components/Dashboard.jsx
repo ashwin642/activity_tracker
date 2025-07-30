@@ -12,32 +12,153 @@ import {
   Search,
   Zap,
   Shield,
-  AlertTriangle
+  AlertTriangle,
+  Edit
 } from 'lucide-react';
 
 const Dashboard = ({ onLogout }) => {
   const [user, setUser] = useState(null);
   const [activities, setActivities] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingActivity, setEditingActivity] = useState(null);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [roleCheckLoading, setRoleCheckLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
-  const [newActivity, setNewActivity] = useState({
-    activity_name: '',
-    duration: '',
-    calories_burned: '',
-    notes: '',
-    date: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM format
-  });
   const [stats, setStats] = useState({
     totalActivities: 0,
     totalDuration: 0,
     totalCalories: 0,
     avgDuration: 0,
     streak: 0
+  });
+
+  // Helper function to get current datetime-local string without timezone conversion
+  const getCurrentDateTimeLocal = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  // Helper function to convert datetime-local string to ISO without timezone conversion
+  const dateTimeLocalToISO = (dateTimeLocal) => {
+    if (!dateTimeLocal) return null;
+    
+    try {
+      // Parse the datetime-local string components
+      const match = dateTimeLocal.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+      if (match) {
+        const [, year, month, day, hours, minutes] = match;
+        // Create ISO string directly without timezone conversion
+        return `${year}-${month}-${day}T${hours}:${minutes}:00.000Z`;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error converting datetime-local to ISO:', error);
+      return null;
+    }
+  };
+
+  // Helper function to format date for display using the same method as creation
+  const formatDateForDisplay = (isoString) => {
+    if (!isoString) return 'No date';
+    
+    try {
+      // Extract date and time components directly from ISO string to avoid timezone conversion
+      const dateMatch = isoString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      if (dateMatch) {
+        const [, year, month, day, hours, minutes] = dateMatch;
+        
+        // Create date object for formatting the date part
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        const dateStr = date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+        
+        // Format time in 12-hour format
+        const hour24 = parseInt(hours);
+        const hour12 = hour24 % 12 || 12;
+        const ampm = hour24 >= 12 ? 'PM' : 'AM';
+        const timeStr = `${hour12}:${minutes} ${ampm}`;
+        
+        return `${dateStr}, ${timeStr}`;
+      }
+      
+      // Fallback if regex doesn't match
+      return 'Invalid date format';
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
+
+  // Helper function to extract just the date part for display
+  const extractDateFromISO = (isoString) => {
+    if (!isoString) return 'No date';
+    
+    try {
+      // Extract date portion directly from ISO string to avoid timezone conversion
+      const dateMatch = isoString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateMatch) {
+        const [, year, month, day] = dateMatch;
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      }
+      
+      return 'No date';
+    } catch (error) {
+      return 'No date';
+    }
+  };
+
+  // Helper function to extract just the time part for display
+  const extractTimeFromISO = (isoString) => {
+    if (!isoString) return '';
+    
+    try {
+      // Extract the time portion directly from the ISO string to avoid timezone conversion
+      const timeMatch = isoString.match(/T(\d{2}):(\d{2})/);
+      if (timeMatch) {
+        const [, hours, minutes] = timeMatch;
+        const hour24 = parseInt(hours);
+        const hour12 = hour24 % 12 || 12;
+        const ampm = hour24 >= 12 ? 'PM' : 'AM';
+        return `${hour12}:${minutes} ${ampm}`;
+      }
+      
+      return '';
+    } catch (error) {
+      return '';
+    }
+  };
+
+  const [newActivity, setNewActivity] = useState({
+    activity_name: '',
+    duration: '',
+    calories_burned: '',
+    notes: '',
+    date: getCurrentDateTimeLocal() // Use timezone-safe current datetime
+  });
+  const [editActivity, setEditActivity] = useState({
+    activity_name: '',
+    duration: '',
+    calories_burned: '',
+    notes: '',
+    date: ''
   });
 
   // Dynamic API URL detection for Codespaces
@@ -326,7 +447,7 @@ const Dashboard = ({ onLogout }) => {
         duration: parseInt(newActivity.duration) || 0,
         calories_burned: newActivity.calories_burned ? parseInt(newActivity.calories_burned) : null,
         notes: newActivity.notes || null,
-        date: new Date(newActivity.date).toISOString()
+        date: dateTimeLocalToISO(newActivity.date)
       };
       
       console.log('Sending activity data:', activityData);
@@ -349,7 +470,7 @@ const Dashboard = ({ onLogout }) => {
           duration: '',
           calories_burned: '',
           notes: '',
-          date: new Date().toISOString().slice(0, 16)
+          date: getCurrentDateTimeLocal()
         });
         setShowAddForm(false);
       } else {
@@ -362,6 +483,105 @@ const Dashboard = ({ onLogout }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Edit activity
+  const handleEditActivity = async (e) => {
+    e.preventDefault();
+    if (!hasAccess || !editingActivity) return;
+    
+    setLoading(true);
+    setError('');
+    
+    try {
+      // Prepare activity data according to your schema
+      const activityData = {
+        activity_name: editActivity.activity_name,
+        duration: parseInt(editActivity.duration) || 0,
+        calories_burned: editActivity.calories_burned ? parseInt(editActivity.calories_burned) : null,
+        notes: editActivity.notes || null,
+        date: dateTimeLocalToISO(editActivity.date)
+      };
+      
+      console.log('Updating activity data:', activityData);
+      
+      const response = await authenticatedFetch(`${API_BASE_URL}/activities/${editingActivity.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(activityData)
+      });
+      
+      if (response.ok) {
+        const updatedActivity = await response.json();
+        console.log('Activity updated:', updatedActivity);
+        
+        // Reload activities to get the latest data
+        await loadActivities();
+        
+        // Reset form and close modal
+        setEditActivity({
+          activity_name: '',
+          duration: '',
+          calories_burned: '',
+          notes: '',
+          date: ''
+        });
+        setEditingActivity(null);
+        setShowEditForm(false);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update activity');
+      }
+    } catch (error) {
+      console.error('Error updating activity:', error);
+      setError('Failed to update activity. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper function to convert ISO string back to datetime-local format without timezone conversion
+  const isoToDateTimeLocal = (isoString) => {
+    if (!isoString) return '';
+    
+    try {
+      // Extract components directly from ISO string to avoid timezone conversion
+      const match = isoString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      if (match) {
+        const [, year, month, day, hours, minutes] = match;
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      }
+      
+      return '';
+    } catch (error) {
+      console.error('Error converting ISO to datetime-local:', error);
+      return '';
+    }
+  };
+
+  // Open edit form with activity data
+  const openEditForm = (activity) => {
+    setEditingActivity(activity);
+    setEditActivity({
+      activity_name: activity.activity_name || '',
+      duration: activity.duration?.toString() || '',
+      calories_burned: activity.calories_burned?.toString() || '',
+      notes: activity.notes || '',
+      date: isoToDateTimeLocal(activity.date)
+    });
+    setShowEditForm(true);
+  };
+
+  // Close edit form
+  const closeEditForm = () => {
+    setShowEditForm(false);
+    setEditingActivity(null);
+    setEditActivity({
+      activity_name: '',
+      duration: '',
+      calories_burned: '',
+      notes: '',
+      date: ''
+    });
   };
 
   // Delete activity
@@ -411,21 +631,6 @@ const Dashboard = ({ onLogout }) => {
       (activity.notes && activity.notes.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesSearch;
   });
-
-  // Format date for display
-  const formatDate = (dateString) => {
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
-      return 'Invalid date';
-    }
-  };
 
   // Show loading screen while checking role
   if (roleCheckLoading) {
@@ -633,7 +838,7 @@ const Dashboard = ({ onLogout }) => {
                         <div className="flex items-center text-sm text-gray-500 mt-1 flex-wrap gap-4">
                           <div className="flex items-center">
                             <Calendar className="w-4 h-4 mr-1" />
-                            {formatDate(activity.date)}
+                            {formatDateForDisplay(activity.date)}
                           </div>
                           <div className="flex items-center">
                             <Clock className="w-4 h-4 mr-1" />
@@ -653,6 +858,14 @@ const Dashboard = ({ onLogout }) => {
                     </div>
                     
                     <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => openEditForm(activity)}
+                        disabled={loading}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Edit activity"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => deleteActivity(activity.id)}
                         disabled={loading}
@@ -686,7 +899,7 @@ const Dashboard = ({ onLogout }) => {
                   value={newActivity.activity_name}
                   onChange={(e) => setNewActivity({...newActivity, activity_name: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="e.g., Morning Run, Yoga Session"
+                  placeholder="e.g., Morning Run, Yoga Session, Weight Training"
                   required
                 />
               </div>
@@ -759,6 +972,102 @@ const Dashboard = ({ onLogout }) => {
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
                   {loading ? 'Adding...' : 'Add Activity'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Activity Modal */}
+      {showEditForm && editingActivity && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Activity</h3>
+            
+            <form onSubmit={handleEditActivity} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Activity Name *
+                </label>
+                <input
+                  type="text"
+                  value={editActivity.activity_name}
+                  onChange={(e) => setEditActivity({...editActivity, activity_name: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="e.g., Morning Run, Yoga Session"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Duration (minutes) *
+                </label>
+                <input
+                  type="number"
+                  value={editActivity.duration}
+                  onChange={(e) => setEditActivity({...editActivity, duration: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  min="1"
+                  placeholder="30"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Calories Burned
+                </label>
+                <input
+                  type="number"
+                  value={editActivity.calories_burned}
+                  onChange={(e) => setEditActivity({...editActivity, calories_burned: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="300"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Date & Time *
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editActivity.date}
+                  onChange={(e) => setEditActivity({...editActivity, date: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={editActivity.notes}
+                  onChange={(e) => setEditActivity({...editActivity, notes: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  rows="3"
+                  placeholder="How did it go? Any observations?"
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={closeEditForm}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Updating...' : 'Update Activity'}
                 </button>
               </div>
             </form>

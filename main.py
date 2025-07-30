@@ -1941,3 +1941,222 @@ def get_wellness_dashboard_summary(
             "total_entries": nutrition_count + sleep_count + mood_count + meditation_count + hydration_count
         }
     }
+# NUTRITION UPDATE ENDPOINT
+@app.put("/wellness/nutrition/{entry_id}", response_model=schemas.NutritionOut)
+def update_nutrition_entry(
+    entry_id: int,
+    nutrition_data: schemas.NutritionCreate,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_NUTRITION])),
+    db: Session = Depends(get_db)
+):
+    """Update nutrition entry"""
+    entry = db.query(models.NutritionEntry).filter(
+        models.NutritionEntry.id == entry_id,
+        models.NutritionEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Nutrition entry not found")
+    
+    try:
+        # Update fields
+        entry.meal_type = nutrition_data.meal_type
+        entry.food_items = nutrition_data.food_items
+        entry.calories = nutrition_data.calories
+        entry.protein = nutrition_data.protein
+        entry.carbs = nutrition_data.carbs
+        entry.sugar = nutrition_data.sugar
+        entry.fat = nutrition_data.fat
+        entry.notes = nutrition_data.notes
+        
+        db.commit()
+        db.refresh(entry)
+        
+        # Log the action
+        log_user_action(
+            db, 
+            current_user.id, 
+            "UPDATE_NUTRITION", 
+            f"Updated nutrition: {nutrition_data.meal_type} - {nutrition_data.food_items[:30]}"
+        )
+        
+        return entry
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update nutrition entry: {str(e)}"
+        )
+
+# SLEEP UPDATE ENDPOINT
+@app.put("/wellness/sleep/{entry_id}", response_model=schemas.SleepOut)
+def update_sleep_entry(
+    entry_id: int,
+    sleep_data: schemas.SleepCreate,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_SLEEP])),
+    db: Session = Depends(get_db)
+):
+    """Update sleep entry"""
+    entry = db.query(models.SleepEntry).filter(
+        models.SleepEntry.id == entry_id,
+        models.SleepEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Sleep entry not found")
+    
+    try:
+        # Update fields
+        entry.bedtime = sleep_data.bedtime
+        entry.wake_time = sleep_data.wake_time
+        entry.sleep_quality = sleep_data.sleep_quality
+        entry.sleep_duration = sleep_data.sleep_duration
+        entry.notes = sleep_data.notes
+        
+        db.commit()
+        db.refresh(entry)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "UPDATE_SLEEP", 
+            f"Updated sleep: {sleep_data.sleep_duration or 0}min (Quality: {sleep_data.sleep_quality}/10)"
+        )
+        
+        return entry
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update sleep entry: {str(e)}"
+        )
+
+# MOOD UPDATE ENDPOINT
+@app.put("/wellness/mood/{entry_id}", response_model=schemas.MoodOut)
+def update_mood_entry(
+    entry_id: int,
+    mood_data: schemas.MoodCreate,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MOOD])),
+    db: Session = Depends(get_db)
+):
+    """Update mood entry"""
+    entry = db.query(models.MoodEntry).filter(
+        models.MoodEntry.id == entry_id,
+        models.MoodEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Mood entry not found")
+    
+    try:
+        # Update fields
+        entry.mood_rating = mood_data.mood_rating
+        entry.mood_type = mood_data.mood_type
+        entry.energy_level = mood_data.energy_level
+        entry.stress_level = mood_data.stress_level
+        entry.notes = mood_data.notes
+        
+        db.commit()
+        db.refresh(entry)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "UPDATE_MOOD", 
+            f"Updated mood: {mood_data.mood_type} - {mood_data.mood_rating}/10"
+        )
+        
+        return entry
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update mood entry: {str(e)}"
+        )
+
+# MEDITATION UPDATE ENDPOINT
+@app.put("/wellness/meditation/{entry_id}", response_model=schemas.MeditationOut)
+def update_meditation_entry(
+    entry_id: int,
+    meditation_data: schemas.MeditationCreate,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_MEDITATION])),
+    db: Session = Depends(get_db)
+):
+    """Update meditation entry"""
+    entry = db.query(models.MeditationEntry).filter(
+        models.MeditationEntry.id == entry_id,
+        models.MeditationEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Meditation entry not found")
+    
+    try:
+        # Update fields
+        entry.duration = meditation_data.duration
+        entry.meditation_type = meditation_data.meditation_type
+        entry.notes = meditation_data.notes
+        
+        db.commit()
+        db.refresh(entry)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "UPDATE_MEDITATION", 
+            f"Updated meditation: {meditation_data.meditation_type} - {meditation_data.duration}min"
+        )
+        
+        return entry
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update meditation entry: {str(e)}"
+        )
+
+# HYDRATION UPDATE ENDPOINT
+@app.put("/wellness/hydration/{entry_id}", response_model=schemas.HydrationOut)
+def update_hydration_entry(
+    entry_id: int,
+    hydration_data: schemas.HydrationCreate,
+    current_user: models.User = Depends(permission_required([Permission.TRACK_HYDRATION])),
+    db: Session = Depends(get_db)
+):
+    """Update hydration entry"""
+    entry = db.query(models.HydrationEntry).filter(
+        models.HydrationEntry.id == entry_id,
+        models.HydrationEntry.user_id == current_user.id
+    ).first()
+    
+    if not entry:
+        raise HTTPException(status_code=404, detail="Hydration entry not found")
+    
+    try:
+        # Update fields
+        entry.water_intake = hydration_data.water_intake
+        entry.time_logged = hydration_data.time_logged
+        entry.notes = hydration_data.notes
+        
+        db.commit()
+        db.refresh(entry)
+        
+        log_user_action(
+            db, 
+            current_user.id, 
+            "UPDATE_HYDRATION", 
+            f"Updated hydration: {hydration_data.water_intake}L"
+        )
+        
+        return entry
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update hydration entry: {str(e)}"
+        )
