@@ -1656,10 +1656,8 @@ const formatDateTime = (isoString) => {
                     >
                       <option value="mindfulness">Mindfulness</option>
                       <option value="breathing">Breathing</option>
-                      <option value="body_scan">Body Scan</option>
-                      <option value="loving_kindness">Loving Kindness</option>
                       <option value="visualization">Visualization</option>
-                      <option value="walking">Walking</option>
+                      <option value="movement">Movement</option>
                     </select>
                   </div>
                 </>
@@ -2063,8 +2061,6 @@ const formatDateTime = (isoString) => {
                       <option value="mindfulness">Mindfulness</option>
                       <option value="guided">Guided</option>
                       <option value="breathing">Breathing</option>
-                      <option value="body_scan">Body Scan</option>
-                      <option value="loving_kindness">Loving Kindness</option>
                       <option value="transcendental">Transcendental</option>
                       <option value="movement">Movement</option>
                       <option value="mantra">Mantra</option>
