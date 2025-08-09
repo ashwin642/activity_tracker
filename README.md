@@ -12,7 +12,7 @@ A comprehensive activity and wellness tracking application with role-based acces
 - **Statistics & Analytics**: Comprehensive user statistics and progress tracking
 - **Dashboard**: Real-time overview of activities, goals, and progress
 
-### Wellness Tracking (Premium Feature)
+### Wellness Tracking
 - **Nutrition Tracking**: Log meals, calories, and macronutrients
 - **Sleep Monitoring**: Track sleep quality, duration, and patterns
 - **Mood Tracking**: Monitor emotional well-being and energy levels
